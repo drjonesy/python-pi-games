@@ -6,9 +6,9 @@ is testable without a window or an audio device.
 
 import pytest
 
-from pacman import constants as C
-from pacman.coordinator import STATE_MENU, STATE_PLAYING, GameCoordinator
-from pacman.leaderboard import Leaderboard
+from games.pacman import constants as C
+from games.pacman.coordinator import STATE_MENU, STATE_PLAYING, GameCoordinator
+from cabinet.leaderboard import Leaderboard
 
 
 class StubRenderer:

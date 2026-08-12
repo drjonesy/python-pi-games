@@ -8,17 +8,17 @@ an unconverted surface every frame is one of the few genuinely slow things you
 can do in pygame - and keeps a small cache for the handful of sprites that are
 drawn at a size other than their native one.
 
-All world-space coordinates are relative to the maze's top-left corner, exactly
-as they were on the canvas. `origin` translates them into screen space, so the
-ported engine code needs no offset arithmetic of its own.
+A game's world-space coordinates are relative to its playfield's top-left
+corner - for Pac-Man, the maze's, exactly as they were on the canvas. `origin`
+translates them into screen space, so ported engine code needs no offset
+arithmetic of its own. It defaults to the top-left of the screen; a game with a
+playfield inset below a score row passes its own (see `games/pacman/game.py`).
 """
 
 import json
 import os
 
 import pygame
-
-from .constants import MAZE_ORIGIN_X, MAZE_ORIGIN_Y
 
 ASSET_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           'assets')
@@ -151,7 +151,7 @@ class AssetStore:
 
 
 class Renderer:
-    def __init__(self, surface, assets, origin=(MAZE_ORIGIN_X, MAZE_ORIGIN_Y)):
+    def __init__(self, surface, assets, origin=(0, 0)):
         self.surface = surface
         self.assets = assets
         self.origin = origin

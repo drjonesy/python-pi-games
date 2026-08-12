@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
-"""Entry point: window setup, input, and the render/simulate loop.
+"""Entry point: window setup, audio, and handing over to the cabinet shell.
 
 Run with no arguments for fullscreen. `--windowed` is for desktop testing.
+
+The machine boots into the game picker (`cabinet/ui/game_select.py`). Everything
+after the window exists lives in `cabinet/app.py`; this file is the boot
+sequence, and the order of it matters - SDL reads the audio driver from the
+environment before pygame is imported, and the mixer must be pre-initialised
+before `pygame.init()`.
 """
 
 import argparse
 import os
 import sys
 
-from pacman import constants as C
-
 # Must be decided before pygame.init(): a small buffer keeps audio latency down.
 # If audio underruns on the Pi, raise this to 1024 before touching anything
 # else.
 AUDIO_BUFFER = 512
+
+# The game --data-file and --reset act on unless --game says otherwise. It is
+# Pac-Man because that is the board that predates the cabinet having more than
+# one game, and the one the Node version shares a file with.
+DEFAULT_GAME = 'pacman'
 
 
 def parse_args(argv=None):
@@ -26,13 +35,24 @@ def parse_args(argv=None):
                         help='disable audio entirely')
     parser.add_argument('--fps', action='store_true',
                         help='show the FPS counter from the start')
+    parser.add_argument('--game', default=None, metavar='ID',
+                        help='boot straight into this game instead of the '
+                             'picker, and the game --data-file and --reset '
+                             f'act on (default: {DEFAULT_GAME}). '
+                             'See --list-games.')
+    parser.add_argument('--list-games', action='store_true',
+                        help='list the installed games and their score files, '
+                             'then exit')
     parser.add_argument('--data-file', default=None, metavar='PATH',
-                        help='leaderboard JSON file. Point this at '
-                             '../node-version/data/data.json to share one board '
-                             'with the Node version.')
+                        help='high-score file for the game named by --game. '
+                             'Point this at ../node-version/data/data.json to '
+                             'share one board with the Node version.')
     parser.add_argument('--reset', action='store_true',
-                        help='clear the leaderboard and exit '
+                        help='clear one game\'s high scores and exit '
                              '(equivalent to npm run reset)')
+    parser.add_argument('--reset-all', action='store_true',
+                        help='clear every installed game\'s high scores '
+                             'and exit')
     parser.add_argument('--audio-buffer', type=int, default=AUDIO_BUFFER,
                         metavar='N', help='mixer buffer size (default: 512)')
     parser.add_argument('--audio-driver', default=None, metavar='NAME',
@@ -49,15 +69,58 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+def resolve_specs(args):
+    """The games to install, and the board overrides to apply to them.
+
+    Returns `(specs, data_files, error)`. `specs` is what the picker lists -
+    every installed game, or just one under `--game`, which is how a cabinet
+    dedicated to a single title skips the picker entirely.
+    """
+    from cabinet.leaderboard import Leaderboard
+    from games import registry
+
+    installed = registry.all_games()
+    known = ', '.join(spec.id for spec in installed)
+
+    target_id = args.game or DEFAULT_GAME
+    target = registry.find(target_id)
+    if target is None:
+        return (), {}, f'unknown game: {target_id} (installed: {known})'
+
+    data_files = {target.id: args.data_file} if args.data_file else {}
+
+    if args.reset_all:
+        for spec in installed:
+            path = data_files.get(spec.id, spec.data_file)
+            Leaderboard(path).reset()
+            print(f'{spec.id}: high scores cleared ({path})')
+        return (), {}, None
+
+    if args.reset:
+        path = data_files.get(target.id, target.data_file)
+        Leaderboard(path).reset()
+        print(f'{target.id}: high scores cleared ({path})')
+        return (), {}, None
+
+    specs = (target,) if args.game else installed
+    return specs, data_files, None
+
+
 def main(argv=None):
     args = parse_args(argv)
 
-    from pacman.leaderboard import DATA_FILE, Leaderboard
-    leaderboard = Leaderboard(args.data_file or DATA_FILE)
+    if args.list_games:
+        from games import registry
+        for spec in registry.all_games():
+            print(f'{spec.id:12} {spec.title:20} {spec.data_file}')
+        return 0
 
-    if args.reset:
-        leaderboard.reset()
-        print(f'leaderboard cleared: {leaderboard.data_file}')
+    specs, data_files, error = resolve_specs(args)
+    if error:
+        print(error, file=sys.stderr)
+        return 2
+    if not specs:
+        # A --reset run: the boards are cleared and there is nothing to show.
         return 0
 
     # Must be set before pygame is imported: SDL reads it when it
@@ -67,6 +130,8 @@ def main(argv=None):
         os.environ['SDL_AUDIODRIVER'] = args.audio_driver
 
     import pygame
+
+    from cabinet import constants as C
 
     sound_enabled = not args.no_sound
     audio_error = None
@@ -108,7 +173,7 @@ def main(argv=None):
             driver = 'unknown'
         print(f'audio: driver={driver} mixer={pygame.mixer.get_init()}')
 
-    pygame.display.set_caption('Pac-Man')
+    pygame.display.set_caption('Arcade')
     pygame.mouse.set_visible(False)
 
     logical_size = (C.LOGICAL_WIDTH, C.LOGICAL_HEIGHT)
@@ -134,20 +199,14 @@ def main(argv=None):
             )
         logical = window
 
-    from pacman.controls import Controls
-    from pacman.coordinator import STATE_MENU, STATE_PLAYING, GameCoordinator
-    from pacman.engine import GameEngine
-    from pacman.gamepad import MAPPING_FILE, GamepadManager, load_mapping
-    from pacman.font import BitmapFont
-    from pacman.renderer import AssetStore, Renderer
-    from pacman.sound import SoundManager
-    from pacman.ui.hud import Hud
-    from pacman.ui.menu import Menu
-    from pacman.ui.score_entry import ScoreEntry
-    from pacman.ui.system_menu import SystemMenu
+    from cabinet.app import Cabinet
+    from cabinet.controls import Controls
+    from cabinet.font import BitmapFont
+    from cabinet.gamepad import MAPPING_FILE, GamepadManager, load_mapping
+    from cabinet.renderer import AssetStore
+    from cabinet.sound import SoundManager
 
     assets = AssetStore().load()
-    renderer = Renderer(logical, assets)
     font = BitmapFont()
 
     sound_manager = SoundManager(enabled=sound_enabled).load()
@@ -157,268 +216,33 @@ def main(argv=None):
         print(f'audio: {len(sound_manager.sounds)} clips loaded, '
               f'volume={sound_manager.master_volume}')
 
-    coordinator = GameCoordinator(renderer, sound_manager, leaderboard)
-    coordinator.show_fps = args.fps
-
-    # One shared object, mutated in place by the operator menu, so every
-    # screen picks up a change of scheme on the next frame.
-    controls = Controls()
-
-    hud = Hud(renderer, font, controls)
-    menu = Menu(renderer, font, leaderboard, controls, sound_manager)
-    score_entry = ScoreEntry(renderer, font, leaderboard, controls)
-    system_menu = SystemMenu(renderer, font, leaderboard, controls=controls,
-                             sound_manager=sound_manager)
-
-    def on_score_saved():
-        # The HIGH SCORE readout mirrors first place, so both it and the menu
-        # table have to be refreshed after a save (engine.js:1251-1260).
-        menu.refresh()
-        coordinator.refresh_high_score()
-
-    coordinator.on_game_over = (
-        lambda score: score_entry.try_open(score, on_close=on_score_saved)
-    )
-
-    # engine.js:1178-1190. The on-screen d-pad and all touch handling are
-    # dropped - there is no touchscreen and no portrait layout (§10).
-    movement_keys = {
-        pygame.K_w: 'up',
-        pygame.K_s: 'down',
-        pygame.K_a: 'left',
-        pygame.K_d: 'right',
-        pygame.K_UP: 'up',
-        pygame.K_DOWN: 'down',
-        pygame.K_LEFT: 'left',
-        pygame.K_RIGHT: 'right',
-    }
-
     pads = GamepadManager(
         load_mapping(args.pad_mapping or MAPPING_FILE),
     ).open_all()
 
-    state = {'running': True, 'ui_clock_ms': 0.0}
+    cabinet = Cabinet(
+        window=window,
+        surface=logical,
+        assets=assets,
+        font=font,
+        sound_manager=sound_manager,
+        # One shared object, mutated in place by the operator menu, so every
+        # screen picks up a change of scheme on the next frame.
+        controls=Controls(),
+        pads=pads,
+        specs=specs,
+        data_files=data_files,
+        show_fps=args.fps,
+    )
 
-    def quit_game():
-        state['running'] = False
+    # A cabinet pinned to one game with --game has no list to come back to, so
+    # it opens on that game's own title screen rather than on the picker.
+    if args.game and len(specs) == 1:
+        cabinet.play(specs[0])
 
-    def start_game():
-        menu.refresh()
-        coordinator.start_button_click()
-
-    def handle_direction(direction):
-        if score_entry.open:
-            score_entry.move(direction)
-        elif coordinator.state == STATE_PLAYING:
-            coordinator.change_direction(direction)
-
-    def handle_select():
-        if score_entry.open:
-            score_entry.select()
-        elif coordinator.state == STATE_MENU:
-            start_game()
-
-    def handle_delete():
-        if score_entry.open:
-            score_entry.backspace()
-
-    def handle_pause():
-        if not score_entry.open and coordinator.state == STATE_PLAYING:
-            coordinator.handle_pause_key()
-
-    def handle_mute():
-        if not score_entry.open:
-            sound_manager.toggle_mute()
-
-    def open_system_menu():
-        system_menu.open_menu(on_reset=on_score_saved, on_exit=quit_game)
-
-    def system_menu_armed():
-        # Menu screen only. Note the state is already STATE_MENU while the
-        # name-entry modal is still up after a game over, so that has to be
-        # excluded separately.
-        return coordinator.state == STATE_MENU and not score_entry.open
-
-    # Everything a pad can do, and the only things it can do. Quit is absent on
-    # purpose: a stray panel press must not be able to close the game.
-    pad_actions = {
-        'up': lambda: handle_direction('up'),
-        'down': lambda: handle_direction('down'),
-        'left': lambda: handle_direction('left'),
-        'right': lambda: handle_direction('right'),
-        'select': handle_select,
-        'delete': handle_delete,
-        'pause': handle_pause,
-        'mute': handle_mute,
-    }
-
-    def dispatch(actions):
-        for action in actions:
-            handler = pad_actions.get(action)
-            if handler is not None:
-                handler()
-
-    def handle_pad_event(event):
-        # Always let the manager see the event first: it also does the hotplug
-        # bookkeeping, which has nothing to do with what the modal wants.
-        actions = pads.handle(event)
-        panels = pads.panels(event)
-
-        if system_menu.open:
-            system_menu.feed(panels=panels, actions=actions)
-        elif system_menu_armed() and 'select' in panels:
-            # Free to take: the SELECT panel drives `pause`, and there is
-            # nothing to pause on the menu. Everywhere else it still does.
-            open_system_menu()
-        else:
-            dispatch(actions)
-
-    # Desktop stand-ins for the mat, so the operator menu can be exercised with
-    # no pad plugged in. Arrows navigate; the shapes sit on their initials.
-    system_menu_keys = {
-        pygame.K_UP: ((), ('up',)),
-        pygame.K_DOWN: ((), ('down',)),
-        pygame.K_x: (('cross',), ()),
-        pygame.K_s: (('square',), ()),
-        pygame.K_t: (('triangle',), ()),
-        pygame.K_c: (('circle',), ()),
-    }
-
-    def handle_system_menu_key(event):
-        # A mat enumerating as a keyboard still gets first refusal here, exactly
-        # as it does outside the modal.
-        panels = pads.key_panels(event)
-        if panels:
-            system_menu.feed(panels=panels, actions=pads.key_actions(event))
-            return
-
-        if event.key == pygame.K_ESCAPE:
-            system_menu.close()
-        elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-            # Enter stands in for whichever panel this stage is waiting on:
-            # SELECT to pick an option, START to commit the reset.
-            system_menu.feed(
-                panels=('start' if system_menu.awaiting_confirm else 'select',),
-            )
-        else:
-            panels, actions = system_menu_keys.get(event.key, ((), ()))
-            if panels or actions:
-                system_menu.feed(panels=panels, actions=actions)
-
-    def handle_keydown(event):
-        # Modal, like the name entry: while it is up it consumes every key, so
-        # nothing being typed at it can reach the game behind.
-        if system_menu.open:
-            handle_system_menu_key(event)
-            return
-
-        # A mat that enumerates as an HID keyboard gets first refusal, so its
-        # panels win over whatever those keys would otherwise mean. Only
-        # populated if the mapping file actually contains `key` bindings.
-        pad_bound = pads.key_actions(event)
-        pad_panels = pads.key_panels(event)
-        if pad_bound or pad_panels:
-            if system_menu_armed() and 'select' in pad_panels:
-                open_system_menu()
-                return
-            if pad_bound:
-                dispatch(pad_bound)
-                return
-
-        # While the modal is open it consumes everything, mirroring the
-        # capture-phase listener in ScoreEntry.jsx:156.
-        if event.key in movement_keys:
-            handle_direction(movement_keys[event.key])
-        elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-            handle_select()
-        elif event.key == pygame.K_BACKSPACE:
-            handle_delete()
-        elif event.key == pygame.K_ESCAPE:
-            # ESC is pause during play, as in the reference (engine.js:1976).
-            # On the menu there is nothing to pause and no browser chrome to
-            # close the window with, so it quits (§10).
-            if coordinator.state == STATE_PLAYING and not score_entry.open:
-                coordinator.handle_pause_key()
-            elif not score_entry.open:
-                quit_game()
-        elif event.key == pygame.K_q:
-            if event.mod & pygame.KMOD_CTRL:
-                quit_game()
-            else:
-                handle_mute()
-        elif event.key == pygame.K_F10:
-            quit_game()
-        elif event.key == pygame.K_F1:
-            coordinator.show_fps = not coordinator.show_fps
-        elif event.key == pygame.K_r and event.mod & pygame.KMOD_CTRL:
-            # Desktop stand-in for the SELECT panel on the mat.
-            if system_menu_armed():
-                open_system_menu()
-
-    def update(elapsed_ms):
-        coordinator.update(elapsed_ms)
-
-    def render(interp):
-        renderer.clear()
-
-        if coordinator.state == STATE_PLAYING:
-            coordinator.render(interp)
-            hud.draw(coordinator, engine.fps)
-            if coordinator.paused_display:
-                hud.draw_pause_overlay(
-                    muted=sound_manager.master_volume == 0,
-                )
-        else:
-            menu.draw(state['ui_clock_ms'])
-            if coordinator.show_fps:
-                hud.draw_fps(engine.fps)
-
-        if score_entry.open:
-            score_entry.draw(state['ui_clock_ms'])
-
-        if system_menu.open:
-            system_menu.draw(state['ui_clock_ms'])
-
-        if logical is not window:
-            pygame.transform.scale(logical, window.get_size(), window)
-
-        pygame.display.flip()
-
-    engine = GameEngine(update, render)
-    clock = pygame.time.Clock()
-
-    while state['running']:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                quit_game()
-            elif event.type == pygame.KEYDOWN:
-                handle_keydown(event)
-            elif event.type in GamepadManager.EVENT_TYPES:
-                # Includes the hotplug events, so a pad plugged in after launch
-                # starts working without a restart.
-                handle_pad_event(event)
-
-        frame_ms = clock.tick(C.RENDER_FPS)
-        state['ui_clock_ms'] += frame_ms
-        coordinator.tick_realtime(frame_ms)
-
-        # Wall-clock, not simulation time: the game is not simulating behind the
-        # operator menu, so its idle timeout cannot be driven from the engine.
-        if system_menu.open:
-            system_menu.tick(frame_ms)
-
-        if coordinator.state == STATE_PLAYING and coordinator.running:
-            engine.tick(frame_ms)
-        else:
-            # Nothing to simulate on the menu or while paused, but the frame
-            # still has to be drawn. Timers are driven by simulation time, so
-            # they freeze here exactly as the reference's did when it stopped
-            # its animation-frame loop (engine.js:2601).
-            engine.track_fps(frame_ms)
-            render(1.0)
-
+    status = cabinet.run()
     pygame.quit()
-    return 0
+    return status
 
 
 if __name__ == '__main__':

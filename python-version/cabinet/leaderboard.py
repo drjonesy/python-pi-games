@@ -1,8 +1,14 @@
 """High scores on disk - a direct port of node-version/server/leaderboard.js.
 
-There is no web server here; the game reads and writes the file itself. The
-on-disk format is kept byte-for-byte compatible with the Node version so a
-single ``data.json`` can be used by either::
+There is no web server here; the cabinet reads and writes the files itself.
+
+**One board per game.** Every game on the machine gets its own file, its own
+top three and its own reset, and none of them can see another's. Pac-Man keeps
+the original ``data/data.json`` so a single file can still be shared with the
+Node version; every other game gets ``data/scores/<id>.json``. See
+`data_file_for`.
+
+The on-disk format is the Node version's, byte for byte::
 
     { "scores": [{ "name": "RYAN", "score": 4200 }] }
 
@@ -24,7 +30,31 @@ from .constants import DEFAULT_NAME, MAX_ENTRIES, MAX_NAME_LENGTH
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data',
 )
+SCORES_DIR = os.path.join(DATA_DIR, 'scores')
+
+# Pac-Man's board, and the only one that is not under `scores/`. It predates
+# the cabinet having more than one game and the Node version writes to the same
+# path, so moving it would break that interop for nothing.
 DATA_FILE = os.path.join(DATA_DIR, 'data.json')
+
+LEGACY_DATA_FILES = {'pacman': DATA_FILE}
+
+
+def data_file_for(game_id, data_dir=None):
+    """Where `game_id` keeps its top three.
+
+    `game_id` is used as a filename, so it is restricted to the characters a
+    package name may contain. A registry entry is written by hand, but this is
+    the one place a typo in one would escape the `data/` directory.
+    """
+    if data_dir is None and game_id in LEGACY_DATA_FILES:
+        return LEGACY_DATA_FILES[game_id]
+
+    safe = ''.join(ch for ch in str(game_id).lower() if ch.isalnum() or ch == '_')
+    if not safe:
+        raise ValueError(f'unusable game id: {game_id!r}')
+
+    return os.path.join(data_dir or SCORES_DIR, f'{safe}.json')
 
 
 def _to_number(value):

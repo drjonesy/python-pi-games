@@ -13,7 +13,7 @@ import os
 import pygame
 import pytest
 
-from pacman.gamepad import (
+from cabinet.gamepad import (
     DEFAULT_DEADZONE, DEFAULT_MAPPING, MAPPING_FILE, GamepadManager,
     binding_key, describe_binding, load_mapping, save_mapping,
 )
@@ -354,7 +354,7 @@ def test_spare_button_indices_do_nothing():
 
 
 def test_default_mapping_only_names_real_actions():
-    from pacman.gamepad import ACTIONS
+    from cabinet.gamepad import ACTIONS
     assert set(DEFAULT_MAPPING['bindings']) <= set(ACTIONS)
     assert 'quit' not in ACTIONS      # a stray panel must not close the game
 

@@ -1,10 +1,37 @@
-"""Every literal the game needs, in one place.
+"""Every literal Pac-Man needs, in one place.
 
 Each value is annotated with the `engine.js` line it came from so this file can
 be diffed against `../node-version/src/game/engine.js` when the reference
 changes. Nothing here is a value remembered from the arcade original - where
 the codebase deviates from 1980, the codebase wins.
+
+The cabinet-wide values this game uses - the screen, the palette, the loop rates
+- are re-exported from `cabinet.constants` rather than duplicated, so game code
+can keep saying `C.LOGICAL_WIDTH` and `C.WHITE` while there is still exactly one
+definition of each. Only what is actually used here is listed: the rest of the
+cabinet's constants (the high-score limits, the name-entry cap) belong to code
+that is not this game's.
 """
+
+from cabinet.constants import (      # noqa: F401  (re-exported for game code)
+    ARCADE_CYAN,
+    ARCADE_DARK,
+    ARCADE_GREY,
+    ARCADE_PALE,
+    ARCADE_RED,
+    ARCADE_YELLOW,
+    BLACK,
+    DIRECTIONS,
+    LOGICAL_HEIGHT,
+    LOGICAL_WIDTH,
+    MAX_STEPS_PER_FRAME,
+    MAZE_BLUE,
+    PACMAN_YELLOW,
+    RANK_LABELS,
+    SIM_DT_MS,
+    SIM_HZ,
+    WHITE,
+)
 
 # --------------------------------------------------------------------------
 # Board geometry (engine.js:13-19)
@@ -30,11 +57,15 @@ TILE_SIZE = 4                  # engine.js:1165
 SCALE = 2
 SCALED_TILE_SIZE = TILE_SIZE * SCALE   # 8
 
-# Logical render surface: the full UI column, 28 tiles wide by 37 tall.
 MAZE_WIDTH = SCALED_TILE_SIZE * MAZE_COLUMNS    # 224
 MAZE_HEIGHT = SCALED_TILE_SIZE * MAZE_ROWS      # 248
-LOGICAL_WIDTH = MAZE_WIDTH                      # 224
-LOGICAL_HEIGHT = SCALED_TILE_SIZE * TOTAL_UI_TILES   # 296
+
+# The cabinet's logical surface was sized from this UI column - 28 tiles wide
+# by 37 tall - so the two must still agree. Asserted rather than derived: the
+# screen now belongs to the shell, and a game that outgrew it should fail here
+# rather than draw off the edge.
+assert LOGICAL_WIDTH == MAZE_WIDTH
+assert LOGICAL_HEIGHT == SCALED_TILE_SIZE * TOTAL_UI_TILES
 
 # The maze sits below the score row and its gap; every engine coordinate is
 # relative to the maze's top-left corner, exactly as it was on the canvas.
@@ -44,18 +75,15 @@ MAZE_ORIGIN_Y = SCALED_TILE_SIZE * (SCORE_ROW_TILES + SCORE_GAP_TILES)   # 32
 # --------------------------------------------------------------------------
 # Timing (engine.js:1157-1164, §3 of the rewrite instructions)
 # --------------------------------------------------------------------------
-# This is the fixed SIMULATION rate, not the render rate, and it must not be
-# lowered. The ghost-house handoff matches on exact positions inside windows
-# only 0.2 tiles wide (see Ghost.entering_ghost_house / leaving_ghost_house).
-# An eaten ghost travels at eye_speed = pacman_speed * 2; at 120Hz that is
-# ~0.18 tiles per step, which lands inside the window, but at 60Hz it is ~0.37
-# tiles and steps clean over it - the ghost then circles forever and never
-# respawns.
-SIM_HZ = 120                   # engine.js:1164 (this.maxFps)
-SIM_DT_MS = 1000.0 / SIM_HZ    # 8.333...
-RENDER_FPS = 60
-# Clamp so a stall cannot compound into a death spiral (engine.js:2572 panic()).
-MAX_STEPS_PER_FRAME = 10
+# SIM_HZ, SIM_DT_MS, RENDER_FPS and MAX_STEPS_PER_FRAME come from
+# `cabinet.constants` (imported above). The cabinet's default happens to be
+# Pac-Man's 120Hz, and for this game it must not be lowered: the ghost-house
+# handoff matches on exact positions inside windows only 0.2 tiles wide (see
+# Ghost.entering_ghost_house / leaving_ghost_house). An eaten ghost travels at
+# eye_speed = pacman_speed * 2; at 120Hz that is ~0.18 tiles per step, which
+# lands inside the window, but at 60Hz it is ~0.37 tiles and steps clean over
+# it - the ghost then circles forever and never respawns.
+assert SIM_HZ == 120           # engine.js:1164 (this.maxFps)
 
 # Float tolerance for the grid comparisons the JS code does with `===`. Those
 # work only because snapToGrid writes the value; a tolerance keeps float drift
@@ -186,30 +214,6 @@ def determine_siren(remaining_dots):
     return 'siren_3'
 
 
-# --------------------------------------------------------------------------
-# Colors (src/styles/*.css)
-# --------------------------------------------------------------------------
-BLACK = (0, 0, 0)                  # #000
-WHITE = (255, 255, 255)            # #fff - also MAZE_FLASH_TINT (engine.js:8)
-MAZE_BLUE = (0x21, 0x21, 0xff)     # #2121ff
-ARCADE_YELLOW = (0xfc, 0xc7, 0x3f)  # #fcc73f
-PACMAN_YELLOW = (0xff, 0xdf, 0x00)  # #ffdf00
-ARCADE_RED = (0xee, 0x2a, 0x29)    # #ee2a29
-ARCADE_CYAN = (0x33, 0xcc, 0xff)   # #33ccff
-ARCADE_PALE = (0xff, 0xe9, 0x8a)   # #ffe98a
-ARCADE_GREY = (0x9a, 0x9a, 0x9a)   # #9a9a9a
-ARCADE_DARK = (0x23, 0x1f, 0x20)   # #231f20
-
+# The palette, the high-score limits and DIRECTIONS are the cabinet's - see the
+# re-export at the top of this file.
 MAZE_FLASH_TINT = WHITE            # engine.js:8
-
-# --------------------------------------------------------------------------
-# Leaderboard (server/leaderboard.js)
-# --------------------------------------------------------------------------
-MAX_ENTRIES = 3                    # leaderboard.js:13
-MAX_NAME_LENGTH = 12               # leaderboard.js:14
-# ScoreEntry.jsx:4 caps what a player can actually type at 10; the storage
-# layer still truncates at 12 so a hand-edited data.json round-trips.
-ENTRY_NAME_LENGTH = 10
-DEFAULT_NAME = 'AAA'               # leaderboard.js:92
-
-DIRECTIONS = ('up', 'down', 'left', 'right')

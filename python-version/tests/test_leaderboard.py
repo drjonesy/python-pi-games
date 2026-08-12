@@ -10,7 +10,7 @@ import os
 
 import pytest
 
-from pacman.leaderboard import Leaderboard
+from cabinet.leaderboard import Leaderboard
 
 
 @pytest.fixture

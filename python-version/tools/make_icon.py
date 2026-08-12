@@ -5,7 +5,7 @@ The output - `assets/icon.png` - is committed, so the Pi needs neither Pillow
 nor this script; `install-desktop-shortcut.sh` just points the .desktop entry at
 the finished file. Rerun this only to change how the icon looks.
 
-The label is set in the game's own 5x7 bitmap font (`pacman/font.py`) rather
+The label is set in the game's own 5x7 bitmap font (`cabinet/font.py`) rather
 than a system typeface, so the icon and the HUD it launches use identical
 letterforms. That font has no lowercase glyphs, hence PACMAN rather than Pacman.
 
@@ -26,8 +26,8 @@ from PIL import Image, ImageDraw
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
-from pacman import constants as C          # noqa: E402
-from pacman.font import CELL_WIDTH, GLYPHS  # noqa: E402
+from games.pacman import constants as C          # noqa: E402
+from cabinet.font import CELL_WIDTH, GLYPHS  # noqa: E402
 
 OUTPUT_PATH = os.path.join(REPO_ROOT, 'assets', 'icon.png')
 

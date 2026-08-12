@@ -28,7 +28,7 @@ class ControlScheme:
     """The labels one input style uses. Two instances, both below."""
 
     def __init__(self, key, label, start, pause, sound, sound_icon, move, pick,
-                 menu_pick, cancel, confirm):
+                 menu_pick, cancel, confirm, back=None):
         self.key = key              # persisted value
         self.label = label          # how the operator menu lists it
         self.start = start          # main menu: PRESS <start>
@@ -46,6 +46,11 @@ class ControlScheme:
         self.menu_pick = menu_pick  # operator menu: <menu_pick> PICKS
         self.cancel = cancel        # operator menu: <cancel> CANCELS
         self.confirm = confirm      # operator menu: PRESS <confirm> TO CONFIRM
+        # A game's title screen: <back> = GAMES, the way back to the picker.
+        # None on a scheme that has no spare control for it - the mat has not
+        # got one, so under that scheme the route back is the CHANGE GAME row
+        # in the operator menu and the hint is dropped rather than lying.
+        self.back = back
 
 
 SCHEMES = {
@@ -54,6 +59,7 @@ SCHEMES = {
         start='ENTER', pause='ESC', sound='Q', sound_icon='Q',
         move='ARROWS', pick='ENTER',
         menu_pick='ENTER', cancel='ESC', confirm='ENTER',
+        back='ESC',
     ),
     PAD: ControlScheme(
         key=PAD, label='DDR PAD',
@@ -68,6 +74,9 @@ SCHEMES = {
         start='START', pause='SELECT', sound=None, sound_icon=None,
         move='ARROWS', pick='START',
         menu_pick='SELECT', cancel='SELECT', confirm='START',
+        # No spare panel: SELECT already opens the operator menu on a title
+        # screen, which is where CHANGE GAME lives.
+        back=None,
     ),
 }
 

@@ -12,10 +12,10 @@ panels while the game is driven by actions, and the two disagree about what
 import pygame
 import pytest
 
-from pacman.controls import KEYBOARD, PAD, SCHEME_ORDER, Controls
-from pacman.gamepad import DEFAULT_MAPPING, GamepadManager
-from pacman.leaderboard import Leaderboard
-from pacman.ui.system_menu import (
+from cabinet.controls import KEYBOARD, PAD, SCHEME_ORDER, Controls
+from cabinet.gamepad import DEFAULT_MAPPING, GamepadManager
+from cabinet.leaderboard import Leaderboard
+from cabinet.ui.system_menu import (
     CODE_PANELS, DEFAULT_CODE, DONE_MS, IDLE_TIMEOUT_MS, OPTIONS,
     RESULT_CLEARED, RESULT_INCORRECT, STAGE_CODE, STAGE_CONFIRM,
     STAGE_DONE, STAGE_OPTIONS, SystemMenu, load_code,
@@ -163,13 +163,15 @@ def test_opens_on_the_first_option(menu):
 
 
 def test_arrows_navigate_and_wrap(menu):
+    # `menu.options` rather than `OPTIONS`: the rows shown depend on what this
+    # open can actually do - see `test_change_game_row_is_absent_on_the_picker`.
     menu.open_menu()
     menu.feed(actions=('down',))
     assert menu.index == 1
     menu.feed(actions=('up',))
     assert menu.index == 0
     menu.feed(actions=('up',))
-    assert menu.index == len(OPTIONS) - 1
+    assert menu.index == len(menu.options) - 1
 
 
 def test_exit_option_calls_the_exit_hook(menu):
@@ -262,7 +264,8 @@ def test_the_row_is_dropped_when_there_is_no_sound_manager(board, controls):
 
     keys = [key for key, _ in menu.options]
     assert 'sound' not in keys
-    assert keys == [key for key, _ in OPTIONS if key != 'sound']
+    assert keys == [key for key, _ in OPTIONS
+                    if key not in ('sound', 'change_game')]
 
     exits = []
     menu.open_menu(on_exit=lambda: exits.append(True))
@@ -274,8 +277,8 @@ def test_the_row_is_dropped_when_there_is_no_sound_manager(board, controls):
 def test_the_rows_still_fit_above_the_nav_hint():
     """Adding SOUND made this a five-row list. Pure geometry, so it needs no
     renderer - and it is the kind of thing that only shows up on the cabinet."""
-    from pacman.font import BitmapFont
-    from pacman.ui.system_menu import (
+    from cabinet.font import BitmapFont
+    from cabinet.ui.system_menu import (
         HINT_Y, OPTIONS_Y, PANEL_GAP, PANEL_HEIGHT, PANEL_WIDTH,
     )
 
@@ -297,6 +300,78 @@ def test_navigation_wraps_over_the_menus_own_rows(board, controls):
 
     assert menu.index == len(menu.options) - 1
     assert menu.options[menu.index][0] == 'cancel'
+
+
+# -- change game -------------------------------------------------------------
+#
+# The mat has no spare panel for backing out of a game, so this row is the only
+# route from a game's title screen to the picker under the pad scheme.
+
+def test_change_game_row_is_absent_on_the_picker(menu):
+    """No game to leave, so the row would do nothing. A dead row on a machine
+    with no keyboard is worse than a missing one."""
+    menu.open_menu()
+    assert 'change_game' not in [key for key, _ in menu.options]
+
+
+def test_change_game_row_appears_over_a_game(menu):
+    changes = []
+    menu.open_menu(on_change_game=lambda: changes.append(True))
+
+    menu.index = option_index(menu, 'change_game')
+    menu.feed(panels=('select',))
+
+    assert changes == [True]
+    assert not menu.open
+
+
+def test_change_game_sits_second(menu):
+    """Behind SOUND, ahead of everything destructive."""
+    menu.open_menu(on_change_game=lambda: None)
+    assert option_index(menu, 'change_game') == 1
+
+
+def test_the_row_list_is_rebuilt_per_open(menu):
+    """A menu opened over a game and then over the picker must not keep the
+    row - `options` is state for one open, not for the object."""
+    menu.open_menu(on_change_game=lambda: None)
+    assert 'change_game' in [key for key, _ in menu.options]
+
+    menu.close()
+    menu.open_menu()
+    assert 'change_game' not in [key for key, _ in menu.options]
+
+
+# -- reset target ------------------------------------------------------------
+#
+# Every game has its own board, so this menu clears exactly one of them:
+# whichever game it was opened over.
+
+def test_open_menu_rebinds_the_board_it_would_clear(menu, board):
+    other = FakeLeaderboard()
+    menu.open_menu(leaderboard=other, target_label='OTHER')
+
+    menu.index = option_index(menu, 'reset')
+    menu.feed(panels=('select',))
+    enter_code(menu)
+    menu.feed(panels=('start',))
+
+    assert other.reset_calls == 1
+    assert board.reset_calls == 0, 'cleared the board it was opened over last'
+
+
+def test_the_target_label_is_kept_for_the_confirmation(menu):
+    """The gate names the board, because 'RESET HIGH SCORES' is ambiguous on a
+    machine that has several of them."""
+    menu.open_menu(leaderboard=FakeLeaderboard(), target_label='PAC-MAN')
+    assert menu.target_label == 'PAC-MAN'
+
+
+def test_omitting_the_board_keeps_the_previous_one(menu, board):
+    """`open_menu()` with no board must not silently unbind the one in use -
+    several tests, and the reset gate itself, rely on that."""
+    menu.open_menu()
+    assert menu.leaderboard is board
 
 
 # -- controller picker -------------------------------------------------------
@@ -350,7 +425,7 @@ def test_switching_scheme_does_not_touch_the_reset_gate(menu, board, controls):
 
 
 def test_labels_differ_between_the_two_schemes():
-    from pacman.controls import SCHEMES
+    from cabinet.controls import SCHEMES
     keyboard, pad = SCHEMES[KEYBOARD], SCHEMES[PAD]
     assert keyboard.start == 'ENTER' and pad.start == 'START'
     assert keyboard.pause != pad.pause

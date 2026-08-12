@@ -3,9 +3,9 @@
 import pytest
 
 from conftest import Harness, grid_to_pixels, pixels_to_grid
-from pacman.character_util import CharacterUtil, approx
-from pacman.constants import MAZE_COLUMNS, SCALED_TILE_SIZE, SIM_DT_MS
-from pacman.maze import MAZE_ARRAY
+from games.pacman.character_util import CharacterUtil, approx
+from games.pacman.constants import MAZE_COLUMNS, SCALED_TILE_SIZE, SIM_DT_MS
+from games.pacman.maze import MAZE_ARRAY
 
 TILE = SCALED_TILE_SIZE
 

@@ -29,7 +29,7 @@ sys.path.insert(0, REPO_ROOT)
 
 import pygame                                            # noqa: E402
 
-from pacman.gamepad import (                             # noqa: E402
+from cabinet.gamepad import (                             # noqa: E402
     ACTIONS, DEFAULT_DEADZONE, MAPPING_FILE, binding_key, describe_binding,
     key_binding, load_mapping, save_mapping,
 )

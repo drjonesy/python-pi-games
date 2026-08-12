@@ -5,7 +5,7 @@ that is what keeps the power-pellet flash frozen while a ghost is being eaten
 (engine.js:2369-2372).
 """
 
-from pacman.timers import TimerManager
+from games.pacman.timers import TimerManager
 
 
 def advance(manager, ms, dt=8.3333333):

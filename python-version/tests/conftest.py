@@ -11,12 +11,12 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pacman.character_util import CharacterUtil          # noqa: E402
-from pacman.characters.ghost import Ghost                # noqa: E402
-from pacman.characters.pacman import Pacman              # noqa: E402
-from pacman.constants import SCALED_TILE_SIZE            # noqa: E402
-from pacman.events import EventBus                       # noqa: E402
-from pacman.maze import MAZE_ARRAY                       # noqa: E402
+from games.pacman.character_util import CharacterUtil          # noqa: E402
+from games.pacman.characters.ghost import Ghost                # noqa: E402
+from games.pacman.characters.pacman import Pacman              # noqa: E402
+from games.pacman.constants import SCALED_TILE_SIZE            # noqa: E402
+from games.pacman.events import EventBus                       # noqa: E402
+from games.pacman.maze import MAZE_ARRAY                       # noqa: E402
 
 TILE = SCALED_TILE_SIZE
 

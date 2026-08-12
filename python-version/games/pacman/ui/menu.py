@@ -6,10 +6,8 @@ title, cyan rank labels, white names and amber scores.
 """
 
 from .. import constants as C
-from ..controls import KEYBOARD, SCHEMES
-from .hints import control_hints, draw_hint
-
-RANK_LABELS = ('1ST', '2ND', '3RD')     # Leaderboard.jsx:4
+from cabinet.controls import KEYBOARD, SCHEMES
+from cabinet.ui.hints import control_hints, draw_hint
 
 LOGO_Y = 26
 PROMPT_Y = 84
@@ -33,6 +31,11 @@ NAME_X = PANEL_X + 44
 SCORE_RIGHT = PANEL_X + PANEL_WIDTH - 12
 
 HINT_Y = C.LOGICAL_HEIGHT - 20
+# The way back to the game picker, above the pause/sound line. Drawn only under
+# a scheme that has a control for it: the mat has not got a spare panel, so
+# there the route back is the CHANGE GAME row in the operator menu and a hint
+# naming a control that does not exist would be worse than none.
+BACK_HINT_Y = C.LOGICAL_HEIGHT - 34
 
 
 class Menu:
@@ -73,6 +76,11 @@ class Menu:
         scheme = self.scheme
         muted = (self.sound_manager is not None
                  and self.sound_manager.master_volume == 0)
+        if scheme.back:
+            self.font.draw(
+                surface, f'{scheme.back} = GAMES', C.LOGICAL_WIDTH / 2,
+                BACK_HINT_Y, C.ARCADE_DARK, align='center',
+            )
         draw_hint(
             surface, self.font, control_hints(scheme),
             C.LOGICAL_WIDTH / 2, HINT_Y, C.ARCADE_DARK, align='center',
@@ -128,7 +136,9 @@ class Menu:
             C.ARCADE_YELLOW, align='center',
         )
 
-        for index, label in enumerate(RANK_LABELS):
+        # Leaderboard.jsx:4. The cabinet's, not this screen's - the picker
+        # labels its rows the same way and both must say the same thing.
+        for index, label in enumerate(C.RANK_LABELS):
             y = ROWS_Y + index * ROW_SPACING
             entry = self.scores[index] if index < len(self.scores) else None
 

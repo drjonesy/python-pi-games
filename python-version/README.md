@@ -1,9 +1,15 @@
-# Pac-Man — pygame port
+# Arcade cabinet — pygame
 
-A native Python + pygame port of the React/Vite version in [`../node-version/`](../node-version/),
-built to run on a Raspberry Pi 4B+ without Chromium.
+A native Python + pygame arcade **platform** built to run on a Raspberry Pi 4B+
+without Chromium. It boots into a game picker; Pac-Man is the first title on it,
+a port of the React/Vite version in [`../node-version/`](../node-version/).
 
-The gameplay is a direct port of [`../node-version/src/game/engine.js`](../node-version/src/game/engine.js) —
+Every game gets the same things from the machine: the screen, the sprite cache,
+the 5×7 font, the mixer, the dance mat, the on-screen control labelling, **its
+own high-score table with its own reset**, the name-entry modal and the operator
+menu. See [Adding a game](#adding-a-game).
+
+Pac-Man's gameplay is a direct port of [`../node-version/src/game/engine.js`](../node-version/src/game/engine.js) —
 same ghost AI, same speeds, same timings, same scoring. Every constant is
 annotated with the `engine.js` line it came from so the two can be diffed.
 
@@ -14,8 +20,9 @@ cd python-version
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-.venv/bin/python main.py                    # fullscreen
+.venv/bin/python main.py                    # fullscreen, opens on the picker
 .venv/bin/python main.py --windowed         # windowed, 3x (desktop testing)
+.venv/bin/python main.py --game pacman      # skip the picker, boot into one game
 ```
 
 The only runtime dependency is `pygame-ce`. There is no Node, npm, pnpm, or
@@ -30,22 +37,58 @@ The only runtime dependency is `pygame-ce`. There is no Node, npm, pnpm, or
 | `--fps` | Show the FPS counter from the start (also `F1` in game) |
 | `--no-sound` | Disable audio entirely |
 | `--audio-buffer N` | Mixer buffer size (default 512; raise to 1024 if audio underruns) |
-| `--data-file PATH` | Leaderboard JSON location |
+| `--game ID` | Boot straight into one game instead of the picker. Also the game `--data-file` and `--reset` act on (default `pacman`) |
+| `--list-games` | List installed games and their score files, then exit |
+| `--data-file PATH` | High-score JSON for the game named by `--game` |
 | `--pad-mapping PATH` | Gamepad / dance-pad binding table (default `data/pad_mapping.json`) |
-| `--reset` | Clear the leaderboard and exit (equivalent to `npm run reset`) |
+| `--reset` | Clear one game's high scores and exit (equivalent to `npm run reset`) |
+| `--reset-all` | Clear every installed game's high scores and exit |
+
+## The game picker
+
+The first screen. A list of titles on the left, a **preview** of the highlighted
+one on the right, and that game's top three underneath — so every board on the
+machine is readable from the front of the cabinet without starting anything.
+
+Up and down move, **Enter** (or **START** on the mat) plays. From a game's own
+title screen, **Esc** comes back here; on the mat there is no spare panel for
+that, so the route back is **CHANGE GAME** in
+[the operator menu](#the-operator-menu-select). On the picker itself, Esc quits.
+
+The preview is a **still image file** — `games/<id>/preview.png`, pointed at by
+`GameSpec.preview_image`. PNG or JPEG, either works. It is loaded on first sight
+and scaled to the panel once, so an idle cabinet parked on this screen costs one
+blit a frame. Nothing on the picker animates.
+
+Author it at **112×124**, the panel's exact inner size, and it is blitted 1:1
+with no resampling — pixel art survives an integer downscale and very little
+else. Anything else is aspect-fitted and centred. A missing or unreadable file
+falls back to the game's name on a black panel: the picker must still list a
+game whose art did not ship.
+
+Pac-Man's is generated rather than hand-drawn, because it is assembled from art
+the game already owns and a second copy of the board would be one more thing to
+keep in step:
+
+```bash
+.venv/bin/python tools/make_preview.py     # writes games/pacman/preview.png
+```
+
+The output is committed, like everything under `assets/`, so the Pi never runs
+it. Re-run it if the maze or the character sheets change.
 
 ## Controls
 
 | Input | Action |
 |---|---|
-| **WASD** / **arrow keys** | Move (and navigate the name-entry keyboard) |
-| **Enter** | Start a game / select a key during name entry |
+| **WASD** / **arrow keys** | Move (also the picker's list and the name-entry keyboard) |
+| **Enter** | Play the highlighted game / start a game / select a key during name entry |
 | **Backspace** | Delete a character during name entry |
-| **Esc** | Pause during play — **quit** from the menu |
+| **Esc** | Pause during play — back to the picker from a game's title screen — **quit** from the picker |
 | **Q** | Toggle sound |
 | **F1** | Toggle the FPS counter |
 | **F10** / **Ctrl-Q** | Quit from anywhere |
-| **Ctrl-R** | Open the operator menu from the main menu (see below) |
+| **Ctrl-R** | Open the operator menu from any title screen (see below) |
 
 Turn buffering is preserved: a direction pressed slightly *before* a junction
 still registers when you reach it. It is a large part of how the controls feel.
@@ -85,21 +128,26 @@ leaderboard — the destructive things live behind the operator menu below.
 
 #### The operator menu (SELECT)
 
-A cabinet has no keyboard, so turning the sound off, clearing the leaderboard or
-shutting the game down used to mean SSHing into the Pi. Press **SELECT on the
-main menu** and a short list appears:
+A cabinet has no keyboard, so turning the sound off, clearing a board or shutting
+the machine down used to mean SSHing into the Pi. Press **SELECT on any title
+screen** — the picker, or a game's own — and a short list appears:
 
 | Option | Effect |
 |---|---|
 | **SOUND  ON** / **SOUND  OFF** | Turns audio on and off |
+| **CHANGE GAME** | Back to the picker. Only shown over a game |
 | **CONTROLLER** | Switches the on-screen hints between keyboard and mat |
-| **RESET SCORES** | Wipes the leaderboard — gated behind a passcode, below |
-| **EXIT GAME** | Closes the game |
+| **RESET SCORES** | Wipes **one game's** board — gated behind a passcode, below |
+| **EXIT GAME** | Closes the cabinet |
 | **CANCEL** | Backs out |
 
 Navigate with the **up/down arrow panels** and choose with **SELECT**. It is only
-reachable from the main menu, so it can never interrupt a run, and it closes
+reachable from a title screen, so it can never interrupt a run, and it closes
 itself after 20 seconds of inactivity.
+
+Rows that could not do anything are left out rather than shown dead: SOUND when
+there is no mixer, CHANGE GAME when the picker is already what is behind the
+menu.
 
 ##### SOUND — audio on and off
 
@@ -125,8 +173,9 @@ they become the panel names instead:
 
 | Screen | Keyboard | DDR pad |
 |---|---|---|
-| Main menu button | PRESS ENTER | PRESS START |
-| Main menu hint | PAUSE = [ESC]   🔈 = [Q] | PAUSE = [SELECT]   🔈 |
+| Game picker | ENTER PLAYS   🔈 = [Q] | SELECT PLAYS   🔈 |
+| Title screen button | PRESS ENTER | PRESS START |
+| Title screen hint | ESC = GAMES<br>PAUSE = [ESC]   🔈 = [Q] | PAUSE = [SELECT]   🔈 |
 | **In game** (below the score) | PAUSE = [ESC]   🔈 = [Q] | PAUSE = [SELECT]   🔈 |
 | **Pause overlay** | RESUME = [ESC]   🔈 = [Q] | RESUME = [SELECT]   🔈 |
 | Name entry | ARROWS MOVE  ENTER PICK | ARROWS MOVE  START PICK |
@@ -138,12 +187,22 @@ case is misleading text. The cursor opens on whichever scheme is active, so
 pressing SELECT straight away is a no-op exit.
 
 The choice is saved in `data/settings.json` and survives a restart. Note that
-under the pad scheme, PAUSE is listed as SELECT: on the main menu that panel
+under the pad scheme, PAUSE is listed as SELECT: on a title screen that panel
 opens this operator menu instead, but during play it does pause. The pad rows
 show a bare speaker because the mat has no sound control to name — it still
 reports whether sound is on, and SOUND above is how you change it.
 
+The pad scheme also drops `ESC = GAMES` from a game's title screen rather than
+naming a panel that does not exist: the mat's route back to the picker is
+[CHANGE GAME](#the-operator-menu-select).
+
 ##### RESET SCORES
+
+**This clears one game's board, not the machine's.** Every game keeps its own top
+three, so the board this resets is whichever game the menu was opened over — the
+running game's, or the highlighted game's on the picker. The game is named in
+yellow under the heading, because "RESET HIGH SCORES" on a machine with several
+boards would otherwise be ambiguous at exactly the moment it must not be.
 
 Choosing RESET SCORES asks for a **passcode** entered on the four shape panels,
 then **START** to confirm. SELECT backs out at any point, and nothing is written
@@ -157,7 +216,7 @@ into four guesses per slot.
 
 ##### Setting your own passcode
 
-The built-in default is in `pacman/ui/system_menu.py`, so it is public — anyone
+The built-in default is in `cabinet/ui/system_menu.py`, so it is public — anyone
 who can read this repository knows it. To set a real one, create
 `data/passcode.json` (gitignored, so it never leaves the Pi):
 
@@ -227,7 +286,7 @@ hides: a panel that bounces and sends one
 press three times, a panel that reports on both a hat and an axis, a switch that
 latches instead of releasing, and an axis sitting at full deflection while
 untouched. It writes a working `data/pad_mapping.json` as it goes, so a clean
-run leaves nothing else to do. It imports nothing from `pacman/`, so it can be
+run leaves nothing else to do. It imports nothing from `cabinet/` or `games/`, so it can be
 copied to a Pi on its own; it needs only pygame.
 
 `gamepad_test.py --calibrate` is the shorter path: it prompts for the eight
@@ -491,43 +550,91 @@ because Vorbis stores an exact sample count, so the short ambience loops
 The script prefers `libvorbis` and falls back to ffmpeg's native `vorbis`
 encoder, which is what Homebrew's build ships.
 
-The UI font is a built-in 5×7 bitmap font in [`pacman/font.py`](pacman/font.py).
+The UI font is a built-in 5×7 bitmap font in [`cabinet/font.py`](cabinet/font.py).
 The web version used 'Press Start 2P' from Google Fonts, which is unavailable
 offline — and at 8 logical pixels tall no outline font would be legible anyway.
 
 ## Architecture
 
-Module boundaries mirror the JS class boundaries, which makes cross-checking
-against the reference straightforward.
+The top-level split is **the machine** and **the games on it**. Everything
+cabinet-wide lives in `cabinet/`; a game owns only its own rules and art. Inside
+`games/pacman/`, module boundaries still mirror the JS class boundaries, which
+makes cross-checking against the reference straightforward.
 
 ```
-main.py                    entry point, window, input
-pacman/
-  gamepad.py               pad bindings -> actions (dance mat, gamepad, encoder)
-  constants.py             every literal, annotated with engine.js line numbers
+main.py                    boot: args, audio, window — then hands over
+cabinet/
+  app.py                   the shell: two screens, the modals, the frame loop
+  game.py                  the Game / GameSpec / GameContext contract
+  constants.py             screen, palette, loop rates, high-score limits
   engine.py                the fixed-timestep loop
-  coordinator.py           GameCoordinator — the game state machine
-  character_util.py        grid math, snap_to_grid, turning, tunnel warp
-  characters/pacman.py     Pacman
-  characters/ghost.py      Ghost (all four, name-parameterized)
-  maze.py                  maze array, tile queries, integrity assertions
-  pickup.py                pacdot | powerPellet | fruit
-  timers.py                pausable timers driven by simulation time
-  sound.py                 SoundManager
+  gamepad.py               pad bindings -> actions (dance mat, gamepad, encoder)
+  controls.py              on-screen labelling: keyboard vs mat
   renderer.py              sprite cache + blit layer
   font.py                  5x7 bitmap font
-  leaderboard.py           JSON high scores
-  ui/{menu,hud,score_entry}.py
+  sound.py                 SoundManager
+  settings.py              data/settings.json (volume, controller)
+  leaderboard.py           JSON high scores — one board per game
+  ui/game_select.py        the picker: list, preview image, that game's scores
+  ui/score_entry.py        name entry, shared by every game
+  ui/system_menu.py        the SELECT operator menu
+  ui/hints.py              the bracketed control reminders
+games/
+  registry.py              every installed game, in picker order
+  pacman/
+    game.py                the seam: Game subclass + GameSpec
+    preview.png            the picker's still (tools/make_preview.py)
+    constants.py           every literal, annotated with engine.js line numbers
+    coordinator.py         GameCoordinator — the game state machine
+    character_util.py      grid math, snap_to_grid, turning, tunnel warp
+    characters/pacman.py   Pacman
+    characters/ghost.py    Ghost (all four, name-parameterized)
+    maze.py                maze array, tile queries, integrity assertions
+    pickup.py              pacdot | powerPellet | fruit
+    timers.py              pausable timers driven by simulation time
+    ui/{menu,hud}.py       title screen, score row / lives / pause overlay
 tools/convert_assets.py    build-time SVG->PNG, MP3->OGG
+tools/make_preview.py      build-time picker art for Pac-Man
 tools/gamepad_test.py      pad identification + calibration
 tools/pad_report.py        per-panel raw event log (standalone; pygame only)
-tests/                     304 tests
+tests/                     452 tests
 ```
 
+**Input funnels through one place.** Pygame events become the eight actions the
+whole machine speaks — four directions plus `select`, `delete`, `pause`,
+`mute` — and `Cabinet._handle_action` decides who gets them: a modal if one is
+up, otherwise the current screen. That is the only routing table, so a game
+cannot be reached by a keypress meant for a dialog and never has to check
+whether one is open. The mat is resolved ahead of that, because the operator
+menu is driven by *physical panels* rather than by actions — see
+[the shape panels](#the-shape-panels-do-nothing-during-play).
+
 The browser's `window.dispatchEvent` messaging is replaced by a small internal
-bus ([`pacman/events.py`](pacman/events.py)), but the event **names** are kept
-verbatim (`eatGhost`, `restoreGhost`, `dotEaten`, …) so grepping finds the same
-call sites in both codebases.
+bus ([`games/pacman/events.py`](games/pacman/events.py)), but the event **names**
+are kept verbatim (`eatGhost`, `restoreGhost`, `dotEaten`, …) so grepping finds
+the same call sites in both codebases.
+
+### Adding a game
+
+Three things, and nothing else in the codebase needs to learn about it:
+
+1. A package under `games/<id>/` with a
+   [`Game`](cabinet/game.py) subclass — `enter`, `leave`, `update`, `render`,
+   `handle_action`, `simulating`, `at_attract`. The defaults are inert, so
+   override only what the game does.
+2. A `GameSpec` describing it: id, title, one-line tagline, factory, and a
+   `preview_image` — a 112×124 PNG or JPEG beside the package.
+3. One line adding that spec to [`games/registry.py`](games/registry.py).
+
+The picker, the per-game score file, the name-entry modal and the operator
+menu's reset all key off the spec. A game is handed a `GameContext` carrying the
+shared services and three hooks — `submit_score`, `exit_to_picker`,
+`quit_cabinet` — and is never responsible for anything cabinet-wide, which is
+what keeps two games from disagreeing about it.
+
+`cabinet/constants.py` holds the screen (224×296, portrait), the palette and the
+loop rates. A game lays itself out inside that rather than changing it; Pac-Man
+asserts the two still agree.
 
 ### The one thing not to change: the 120Hz simulation rate
 
@@ -594,23 +701,31 @@ The pause blur uses a downscale/upscale pass instead of CSS `filter: blur(5px)`.
 
 ## High scores
 
-`data/data.json` is read and written directly — no server:
+**One board per game.** Every game gets its own file, its own top three and its
+own reset, and no game can see another's. Pac-Man keeps `data/data.json`;
+anything added later gets `data/scores/<id>.json`. `--list-games` prints the
+mapping.
+
+Files are read and written directly — no server:
 
 ```json
 { "scores": [{ "name": "RYAN", "score": 4200 }] }
 ```
 
-The format is byte-for-byte compatible with the Node version, so the two can
-share one file:
+Pac-Man's format is byte-for-byte compatible with the Node version, which is why
+its board was left where it was — the two can share one file:
 
 ```bash
-.venv/bin/python main.py --data-file ../node-version/data/data.json
+.venv/bin/python main.py --game pacman --data-file ../node-version/data/data.json
 ```
 
 Rules match `../node-version/server/leaderboard.js` exactly: top 3, 12-character
 names, ties keep the incumbent ahead of the newcomer, blank names become `AAA`,
-and a missing **or corrupt** file is an empty leaderboard rather than an error —
-the game must always be playable.
+and a missing **or corrupt** file is an empty board rather than an error — the
+machine must always be playable.
+
+Clearing a board is either `--reset` (one game, `--game` picks it), `--reset-all`
+(every game), or [RESET SCORES](#reset-scores) on the cabinet itself.
 
 Writes go to a temp file and are then renamed (`os.replace`, atomic on POSIX)
 and fsynced first, so a crash mid-write cannot leave a half-written
@@ -624,7 +739,7 @@ way to turn the machine off.
 .venv/bin/python -m pytest tests/ -q
 ```
 
-304 tests, all headless — no display and no audio device required. Coverage is
+452 tests, all headless — no display and no audio device required. Coverage is
 aimed at what is easy to break and hard to spot: ghost-house respawn at 120Hz
 from all four corners, ghost targeting per ghost per mode (including Inky's
 mirror math and Clyde's 8-tile flip), the scared-mode distance inversion, the

@@ -5,8 +5,8 @@ Simulate at 120Hz, render at 60, and never fuse the two.
 
 import pytest
 
-from pacman.constants import MAX_STEPS_PER_FRAME, SIM_DT_MS
-from pacman.engine import GameEngine
+from games.pacman.constants import MAX_STEPS_PER_FRAME, SIM_DT_MS
+from cabinet.engine import GameEngine
 
 
 def make_engine(**kwargs):

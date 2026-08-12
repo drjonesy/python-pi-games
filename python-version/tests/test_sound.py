@@ -18,7 +18,7 @@ import os
 import pygame
 import pytest
 
-from pacman.sound import ASSET_ROOT, SoundManager
+from cabinet.sound import ASSET_ROOT, SoundManager
 
 pygame.init()
 

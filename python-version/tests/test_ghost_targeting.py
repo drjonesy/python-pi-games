@@ -3,7 +3,7 @@
 import pytest
 
 from conftest import Harness, grid_to_pixels
-from pacman.characters.ghost import CLYDE_RETREAT, GHOST_HOUSE_TARGET
+from games.pacman.characters.ghost import CLYDE_RETREAT, GHOST_HOUSE_TARGET
 
 
 @pytest.mark.parametrize('name, expected', [
@@ -136,7 +136,7 @@ def test_scared_ghost_increases_distance_over_time(harness):
         {'x': 6, 'y': 23}, {'x': 13, 'y': 23},
     )
 
-    from pacman.constants import SIM_DT_MS
+    from games.pacman.constants import SIM_DT_MS
     for _ in range(240):        # ~2 seconds
         ghost.update(SIM_DT_MS)
 

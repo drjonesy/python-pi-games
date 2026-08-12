@@ -15,7 +15,7 @@ the rate genuinely breaks it - otherwise the tests would keep passing if someone
 import pytest
 
 from conftest import Harness, pixels_to_grid
-from pacman.constants import EYE_SPEED_FACTOR, SIM_DT_MS
+from games.pacman.constants import EYE_SPEED_FACTOR, SIM_DT_MS
 
 # The four open corners of the maze.
 CORNERS = [

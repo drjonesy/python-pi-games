@@ -19,13 +19,13 @@ Two things here are easy to break silently and are pinned as a result:
 import pygame
 import pytest
 
-from pacman import constants as C
-from pacman.controls import KEYBOARD, PAD, SCHEMES, Controls
-from pacman.font import GLYPHS, BitmapFont
-from pacman.ui.hints import (
+from games.pacman import constants as C
+from cabinet.controls import KEYBOARD, PAD, SCHEMES, Controls
+from cabinet.font import GLYPHS, BitmapFont
+from cabinet.ui.hints import (
     SLASH_COLOR, SPEAKER, control_hints, sound_hint,
 )
-from pacman.ui.hud import HINT_Y, LINE_TWO_Y, Hud
+from games.pacman.ui.hud import HINT_Y, LINE_TWO_Y, Hud
 
 pygame.init()
 
@@ -206,7 +206,7 @@ def test_the_slash_lands_on_the_speaker_not_a_neighbour(name):
     index = text.index(SPEAKER)
 
     surface = pygame.Surface((C.LOGICAL_WIDTH, 20))
-    from pacman.ui.hints import draw_hint
+    from cabinet.ui.hints import draw_hint
     draw_hint(surface, font, text, C.LOGICAL_WIDTH / 2, 5, C.WHITE,
               align='center', muted=True)
 

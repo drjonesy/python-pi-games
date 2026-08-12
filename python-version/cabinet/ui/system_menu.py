@@ -1,18 +1,28 @@
 """The SELECT operator menu (Pi-only; no reference counterpart).
 
-A cabinet has no keyboard, so clearing the leaderboard, turning the sound off or
-shutting the game down used to mean SSHing in. This is that: the SELECT panel on
-the main menu opens a short list - SOUND, CONTROLLER, RESET SCORES, EXIT GAME,
-CANCEL - navigated with the arrow panels and chosen with SELECT.
+A cabinet has no keyboard, so clearing the high scores, turning the sound off or
+shutting the machine down used to mean SSHing in. This is that: the SELECT panel
+on a title screen opens a short list - SOUND, CHANGE GAME, CONTROLLER, RESET
+SCORES, EXIT GAME, CANCEL - navigated with the arrow panels and chosen with
+SELECT.
 
-SELECT is free to take on the menu because it drives the `pause` action, and
-there is nothing to pause there. An earlier version needed SELECT+START
+SELECT is free to take on a title screen because it drives the `pause` action,
+and there is nothing to pause there. An earlier version needed SELECT+START
 together, which meant holding both panels' actions back for 250ms to see whether
 a combo was forming - too tight a window to hit with two feet on a mat, and it
 put a delay on starting a game. One panel needs none of that.
 
+**RESET SCORES clears one game's board, not the machine's.** Each game keeps its
+own top three (`cabinet/leaderboard.py`), so the board this menu resets is
+whichever one it was opened over - the running game's, or the highlighted game's
+on the picker. Which one that is is printed above the passcode slots, because
+"RESET HIGH SCORES" on a machine with several boards is otherwise ambiguous at
+exactly the moment it must not be.
+
 RESET SCORES is the destructive one, so it is gated behind a passcode entered on
-the four shape panels. EXIT GAME just exits; there is nothing to undo.
+the four shape panels. EXIT GAME just exits; there is nothing to undo. CHANGE
+GAME is the mat's only route back to the picker - there is no spare panel for
+it, which is why it is a row here (see `cabinet/controls.py`).
 
 The passcode is treated as a secret, which drives two things that would
 otherwise look like missing polish:
@@ -92,6 +102,7 @@ def load_code(path=PASSCODE_FILE):
 
 
 OPTION_SOUND = 'sound'
+OPTION_CHANGE_GAME = 'change_game'
 OPTION_CONTROLS = 'controls'
 OPTION_RESET = 'reset'
 OPTION_EXIT = 'exit'
@@ -107,8 +118,13 @@ OPTION_CANCEL = 'cancel'
 # unbound (see `gamepad.DEFAULT_MAPPING`). This popup is the replacement, and it
 # is a good home for it - reachable from the mat with no keyboard, and only from
 # the main menu, so it can never fire mid-run.
+#
+# CHANGE GAME sits second and is present only when there is a game to leave -
+# on the picker itself the row would do nothing, and a dead row is worse than a
+# missing one.
 OPTIONS = (
     (OPTION_SOUND, 'SOUND'),
+    (OPTION_CHANGE_GAME, 'CHANGE GAME'),
     (OPTION_CONTROLS, 'CONTROLLER'),
     (OPTION_RESET, 'RESET SCORES'),
     (OPTION_EXIT, 'EXIT GAME'),
@@ -138,8 +154,14 @@ SLOT_GAP = 10
 SLOT_DOT = 10
 
 HEADING_Y = 74
+# Names the board the reset gate is pointed at, between the heading and the
+# instruction.
+TARGET_Y = 88
 BODY_Y = 100
-OPTIONS_Y = 128
+# Raised from 128 when CHANGE GAME made this a six-row list: at the old origin
+# the last row landed exactly on the nav hint. `test_the_rows_still_fit_above
+# _the_nav_hint` pins the relationship.
+OPTIONS_Y = 114
 HINT_Y = C.LOGICAL_HEIGHT - 40
 
 
@@ -150,23 +172,23 @@ class SystemMenu:
     the game, so nothing behind it can be reached by the code being entered.
     """
 
-    def __init__(self, renderer, font, leaderboard, code=None, controls=None,
-                 sound_manager=None):
+    def __init__(self, renderer, font, leaderboard=None, code=None,
+                 controls=None, sound_manager=None):
         self.renderer = renderer
         self.font = font
+        # The board RESET SCORES clears. Rebound on every open to whichever
+        # game the menu was opened over - see `open_menu`.
         self.leaderboard = leaderboard
+        # What to call that board on the confirmation screen.
+        self.target_label = None
         self.controls = controls if controls is not None else Controls()
         self.sound_manager = sound_manager
         # Read once at construction: re-reading per press would put a file stat
         # in the input path for no benefit, and the file is not hot-edited.
         self.code = tuple(code) if code else load_code()
 
-        # The SOUND row is dropped when there is nothing to toggle rather than
-        # left in place as a dead entry, so every row on screen does something.
-        self.options = tuple(
-            option for option in OPTIONS
-            if option[0] != OPTION_SOUND or sound_manager is not None
-        )
+        self.on_change_game = None
+        self.options = self._build_options()
 
         self.open = False
         self.stage = STAGE_OPTIONS
@@ -181,7 +203,30 @@ class SystemMenu:
 
     # -- lifecycle -----------------------------------------------------------
 
-    def open_menu(self, on_reset=None, on_exit=None):
+    def _build_options(self):
+        """The rows for this open. Every one of them has to do something.
+
+        SOUND is dropped when there is nothing to toggle, CHANGE GAME when
+        there is no game to leave. A row that did nothing would be worse than a
+        missing one on a machine with no keyboard to escape with.
+        """
+        skip = set()
+        if self.sound_manager is None:
+            skip.add(OPTION_SOUND)
+        if self.on_change_game is None:
+            skip.add(OPTION_CHANGE_GAME)
+
+        return tuple(option for option in OPTIONS if option[0] not in skip)
+
+    def open_menu(self, on_reset=None, on_exit=None, on_change_game=None,
+                  leaderboard=None, target_label=None):
+        """Opens over whatever screen is up.
+
+        `leaderboard` and `target_label` say whose high scores RESET SCORES
+        would clear. They are passed per open rather than held for the life of
+        the menu because the answer changes with the screen behind it: the
+        running game's board, or the highlighted game's on the picker.
+        """
         self.open = True
         self.stage = STAGE_OPTIONS
         self.index = 0
@@ -191,6 +236,13 @@ class SystemMenu:
         self.done_ms = 0
         self.on_reset = on_reset
         self.on_exit = on_exit
+        self.on_change_game = on_change_game
+
+        if leaderboard is not None:
+            self.leaderboard = leaderboard
+        self.target_label = target_label
+
+        self.options = self._build_options()
 
     def close(self):
         self.open = False
@@ -304,6 +356,9 @@ class SystemMenu:
             self.sound_manager.toggle_mute()
         elif option == OPTION_CANCEL:
             self.close()
+        elif option == OPTION_CHANGE_GAME:
+            self.close()
+            self.on_change_game()
         elif option == OPTION_EXIT:
             self.close()
             if self.on_exit:
@@ -327,10 +382,13 @@ class SystemMenu:
         """Clears the board. A failed write still closes the menu.
 
         Same rule as `ScoreEntry.close_and_save`: a bad disk must not trap
-        anyone in a modal on a machine with no keyboard.
+        anyone in a modal on a machine with no keyboard. A missing board is
+        treated the same way - there is nothing to clear, and refusing to close
+        would be the worse failure.
         """
         try:
-            self.leaderboard.reset()
+            if self.leaderboard is not None:
+                self.leaderboard.reset()
         except OSError:
             pass
         finally:
@@ -423,6 +481,12 @@ class SystemMenu:
 
         self.font.draw(surface, 'RESET HIGH SCORES', center, HEADING_Y,
                        C.ARCADE_RED, align='center')
+        # Which board. Every game has its own, and this clears exactly one of
+        # them, so leaving it unnamed would make the destructive screen the
+        # only ambiguous one on the machine.
+        if self.target_label:
+            self.font.draw(surface, self.target_label, center, TARGET_Y,
+                           C.ARCADE_YELLOW, align='center')
         self.font.draw(surface, 'ENTER PASSCODE', center, BODY_Y,
                        C.WHITE, align='center')
 

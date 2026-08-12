@@ -11,9 +11,9 @@ import json
 
 import pytest
 
-from pacman import settings
-from pacman.controls import KEYBOARD, PAD, Controls, load_choice
-from pacman.sound import SoundManager
+from cabinet import settings
+from cabinet.controls import KEYBOARD, PAD, Controls, load_choice
+from cabinet.sound import SoundManager
 
 
 @pytest.fixture

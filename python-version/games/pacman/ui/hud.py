@@ -9,8 +9,8 @@ Everything is drawn in absolute screen coordinates, not maze coordinates.
 import pygame
 
 from .. import constants as C
-from ..controls import KEYBOARD, SCHEMES
-from .hints import control_hints, draw_hint
+from cabinet.controls import KEYBOARD, SCHEMES
+from cabinet.ui.hints import control_hints, draw_hint
 
 TILE = C.SCALED_TILE_SIZE
 

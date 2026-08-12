@@ -91,6 +91,11 @@ GLYPHS = {
     # Cone on the left, three wave dots on the right. Without the waves the
     # cone alone reads as a plain arrow at this size, not a speaker.
     '🔈': ('00100', '01101', '11100', '11101', '11100', '01101', '00100'),
+    # More-above / more-below markers on the game picker's list
+    # (`ui/game_select.py`). Solid triangles rather than '^' and 'v': `render`
+    # upper-cases everything, so a 'v' would come out as the letter V.
+    '▲': ('00000', '00100', '01110', '11111', '00000', '00000', '00000'),
+    '▼': ('00000', '00000', '00000', '11111', '01110', '00100', '00000'),
 }
 
 # Anything unmapped renders as a hollow box rather than vanishing, so a missing

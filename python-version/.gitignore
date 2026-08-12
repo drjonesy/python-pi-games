@@ -6,6 +6,9 @@ __pycache__/
 
 # Written atomically then renamed; a stray temp file means a crashed write.
 data/data.json.tmp
+# One high-score file per game (`data/scores/<id>.json`). Pac-Man's board
+# predates the split and stays at data/data.json - see cabinet/leaderboard.py.
+data/scores/*.tmp
 data/settings.json
 data/settings.json.tmp
 # pad_mapping.json itself is *not* ignored: it is worth calibrating once and

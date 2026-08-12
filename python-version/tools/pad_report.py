@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Walk every panel on a pad and write a shareable report. Run this on the Pi.
 
-Standalone on purpose: it imports nothing from `pacman`, so it can be copied to
+Standalone on purpose: it imports nothing from `cabinet` or `games`, so it can be copied to
 a Pi on its own and needs only pygame. It prompts for each of a dance mat's ten
 panels in turn, records **every raw event** that panel produced, and writes a
 plain-text report you can paste into a bug report or an email.

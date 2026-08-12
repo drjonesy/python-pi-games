@@ -6,8 +6,8 @@ Cruise Elroy at 40/20, level advance at 0 - silently stops firing.
 
 import pytest
 
-from pacman.constants import MAZE_COLUMNS, MAZE_ROWS, TOTAL_PICKUPS
-from pacman.maze import MAZE_ARRAY, get_tile, validate_maze
+from games.pacman.constants import MAZE_COLUMNS, MAZE_ROWS, TOTAL_PICKUPS
+from games.pacman.maze import MAZE_ARRAY, get_tile, validate_maze
 
 
 def test_dimensions():

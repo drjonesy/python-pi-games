@@ -3,7 +3,7 @@
 import pytest
 
 from conftest import Harness
-from pacman import constants as C
+from games.pacman import constants as C
 
 
 def test_pacman_speed_is_eleven_tiles_per_second(harness):
