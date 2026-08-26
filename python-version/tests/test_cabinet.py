@@ -24,7 +24,7 @@ from cabinet.controls import KEYBOARD, Controls
 from cabinet.font import GLYPHS, BitmapFont
 from cabinet.game import Game, GameContext, GameSpec
 from cabinet.leaderboard import DATA_FILE, Leaderboard, data_file_for
-from cabinet.renderer import Renderer
+from cabinet.renderer import AssetStore, Renderer
 from cabinet.ui import game_select
 from cabinet.ui.game_select import (
     HINT_Y, PANEL_HEIGHT, PANEL_Y, PREVIEW_INNER, VISIBLE_ROWS, GameSelect,
@@ -178,21 +178,9 @@ def leaderboard_for(boards):
 def picker(specs, leaderboard_for):
     surface = pygame.Surface((C.LOGICAL_WIDTH, C.LOGICAL_HEIGHT))
     return GameSelect(
-        Renderer(surface, _Assets()), BitmapFont(), specs, leaderboard_for,
-        controls=Controls(name=KEYBOARD, path=os.devnull),
+        Renderer(surface, AssetStore().shell()), BitmapFont(), specs,
+        leaderboard_for, controls=Controls(name=KEYBOARD, path=os.devnull),
     )
-
-
-class _Assets:
-    """Enough of `AssetStore` for a screen that draws no sprites of its own."""
-
-    manifest = {'sprites': {}}
-
-    def scaled(self, key, width, height):
-        return None
-
-    def frames(self, key, size):
-        return []
 
 
 def test_the_cursor_starts_on_the_first_game(picker, specs):
@@ -294,7 +282,7 @@ def test_a_long_list_scrolls_to_keep_the_cursor_visible(tmp_path):
     many = [spec_named(f'G{index}', str(tmp_path / f'{index}.json'))
             for index in range(VISIBLE_ROWS + 3)]
     surface = pygame.Surface((C.LOGICAL_WIDTH, C.LOGICAL_HEIGHT))
-    picker = GameSelect(Renderer(surface, _Assets()), BitmapFont(), many,
+    picker = GameSelect(Renderer(surface, AssetStore().shell()), BitmapFont(), many,
                         lambda spec: Leaderboard(spec.data_file),
                         controls=Controls(name=KEYBOARD, path=os.devnull))
 
@@ -314,7 +302,7 @@ def test_a_long_list_scrolls_to_keep_the_cursor_visible(tmp_path):
 def test_an_empty_registry_draws_rather_than_crashing():
     """A cabinet with nothing installed must still boot and say so."""
     surface = pygame.Surface((C.LOGICAL_WIDTH, C.LOGICAL_HEIGHT))
-    picker = GameSelect(Renderer(surface, _Assets()), BitmapFont(), (),
+    picker = GameSelect(Renderer(surface, AssetStore().shell()), BitmapFont(), (),
                         lambda spec: Leaderboard(os.devnull),
                         controls=Controls(name=KEYBOARD, path=os.devnull))
 
@@ -380,5 +368,179 @@ def test_a_context_without_hooks_does_not_raise():
     context.quit_cabinet()
 
 
-def test_a_spec_without_a_preview_image_has_none():
-    assert spec_named('NOPREVIEW', os.devnull).preview_image is None
+def test_a_spec_defaults_every_path_to_the_folder_beside_it():
+    """The whole of "adding a game is dropping a folder in".
+
+    A spec that names only its id, title and factory still knows where its
+    preview, its art and its clips are - they are beside the module the factory
+    came from. Nothing shared has to be edited to install a game, so nothing
+    shared can be forgotten.
+    """
+    spec = GameSpec(id='demo', title='DEMO', factory=StubGame)
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    assert spec.package_dir == here          # StubGame is defined in this file
+    assert spec.preview_image == os.path.join(here, 'preview.png')
+    assert spec.asset_root == os.path.join(here, 'assets')
+    assert spec.sound_prefix == 'demo/'
+
+
+def test_a_spec_for_a_factory_with_no_file_falls_back_to_games():
+    """A factory from a module with no file on disk still resolves.
+
+    Nothing in `games/` looks like this, which is the point: the fallback is
+    what keeps a spec's paths from being `None` for a game built at runtime.
+    """
+    class Homeless(StubGame):
+        __module__ = 'not.a.real.module'
+
+    spec = GameSpec(id='demo', title='DEMO', factory=Homeless)
+    assert spec.package_dir.endswith(os.path.join('games', 'demo'))
+    assert spec.preview_image.endswith(os.path.join('demo', 'preview.png'))
+
+
+# -- releases ----------------------------------------------------------------
+#
+# The one asymmetry in the shell's input routing: nothing the cabinet draws has
+# a held control, so a let-go action skips the routing table and goes straight
+# to the running game. What has to be pinned is where it does *not* go.
+
+class RecordingGame(Game):
+    def __init__(self, context):
+        super().__init__(context)
+        self.pressed = []
+        self.released = []
+        self.playing = False
+
+    def handle_action(self, action):
+        self.pressed.append(action)
+
+    def handle_release(self, action):
+        self.released.append(action)
+
+    @property
+    def at_attract(self):
+        return not self.playing
+
+
+class StubPads:
+    """Enough of `GamepadManager` for the shell's routing."""
+
+    def key_actions(self, event):
+        return ()
+
+    def key_panels(self, event):
+        return ()
+
+    def key_releases(self, event):
+        return ()
+
+
+@pytest.fixture
+def shell(tmp_path, monkeypatch):
+    from cabinet import app as app_module
+
+    spec = GameSpec(id='rec', title='REC', factory=RecordingGame,
+                    data_file=str(tmp_path / 'rec.json'))
+    surface = pygame.Surface((C.LOGICAL_WIDTH, C.LOGICAL_HEIGHT))
+
+    cabinet = app_module.Cabinet(
+        window=surface, surface=surface, assets=AssetStore(), font=BitmapFont(),
+        sound_manager=_Sound(), controls=Controls(name=KEYBOARD,
+                                                  path=os.devnull),
+        pads=StubPads(), specs=(spec,),
+    )
+    cabinet.play(spec)
+    return cabinet
+
+
+class _Sound:
+    """Enough of `SoundManager` for the shell to load a game and route to it."""
+
+    master_volume = 1
+    enabled = False
+
+    def add_clips(self, root, clips, prefix=''):
+        return 0
+
+    def for_game(self, prefix, pause_ambience=None):
+        return self
+
+    def toggle_mute(self):
+        self.master_volume = 0 if self.master_volume else 1
+
+    def stop_all(self):
+        pass
+
+
+def keyup(key):
+    return pygame.event.Event(pygame.KEYUP, {'key': key, 'mod': 0})
+
+
+def test_a_released_key_reaches_the_running_game(shell):
+    shell._handle_keyup(keyup(pygame.K_DOWN))
+    assert shell.game.released == ['down']
+
+
+def test_releases_are_dropped_while_a_modal_is_up(shell):
+    """The game is told what is *not* held; holding that back until the modal
+    closes would deliver a stale fact."""
+    shell.score_entry.open = True
+    shell._handle_keyup(keyup(pygame.K_DOWN))
+    assert shell.game.released == []
+
+
+def test_releases_are_dropped_on_the_picker(shell):
+    shell.to_picker()
+    shell._handle_keyup(keyup(pygame.K_DOWN))
+    assert shell.game.released == []
+
+
+def test_a_key_with_no_action_releases_nothing(shell):
+    shell._handle_keyup(keyup(pygame.K_F5))
+    assert shell.game.released == []
+
+
+def test_pressing_still_goes_through_the_routing_table(shell):
+    """Releases bypass it; presses must not start doing the same."""
+    shell.score_entry.open = True
+    shell._handle_action('down')
+    assert shell.game.pressed == []
+
+
+# -- per-game audio ----------------------------------------------------------
+#
+# Real files, borrowed from the only game that ships any. What is being pinned
+# is the contract every game uses: clips land in the *shared* table, under the
+# prefix that keeps two games from fighting over a name like `jump`.
+
+PACMAN_ASSETS = registry.find('pacman').asset_root
+GAME_CLIPS = {'jump': 'audio/pause.ogg', 'point': 'audio/dot_1.ogg'}
+GAME_PREFIX = 'demo/'
+
+
+def test_a_game_can_add_its_own_clips():
+    """Into the same table as everything else, so one mute covers the cabinet."""
+    from cabinet.sound import SoundManager
+
+    if not pygame.mixer.get_init():
+        pytest.skip('no mixer in this environment')
+
+    manager = SoundManager(enabled=True)
+    loaded = manager.add_clips(PACMAN_ASSETS, GAME_CLIPS, prefix=GAME_PREFIX)
+
+    assert loaded == len(GAME_CLIPS)
+    assert set(manager.sounds) == {f'{GAME_PREFIX}{n}' for n in GAME_CLIPS}
+
+
+def test_missing_clips_are_skipped_rather_than_raised():
+    from cabinet.sound import SoundManager
+
+    manager = SoundManager(enabled=True)
+    assert manager.add_clips('/nowhere', {'a': 'a.wav'}) == 0
+
+
+def test_a_disabled_manager_loads_nothing():
+    from cabinet.sound import SoundManager
+
+    assert SoundManager(enabled=False).add_clips(PACMAN_ASSETS, GAME_CLIPS) == 0

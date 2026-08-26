@@ -10,10 +10,10 @@ seam. It does two jobs:
   run into an offer to the shared name-entry modal.
 
 The picker's picture is `preview.png` beside this file, generated from the
-game's own art by `tools/make_preview.py` and committed.
+game's own art by `tools/make_preview.py` and committed. Its sprites and clips
+are in `assets/` beside it too, and the shell loads both when the game is first
+played - nothing here is cabinet-wide, and no path is written out twice.
 """
-
-import os
 
 from cabinet.game import Game, GameSpec
 from cabinet.leaderboard import DATA_FILE
@@ -26,8 +26,6 @@ from .ui.menu import Menu
 
 TITLE = 'PAC-MAN'
 TAGLINE = 'EAT THE DOTS  DODGE THE GHOSTS'
-PREVIEW_IMAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             'preview.png')
 
 
 class PacmanGame(Game):
@@ -146,8 +144,14 @@ SPEC = GameSpec(
     title=TITLE,
     tagline=TAGLINE,
     factory=PacmanGame,
-    preview_image=PREVIEW_IMAGE,
+    # `preview.png` and `assets/` are found beside this file by convention; only
+    # the two things that are *not* conventional are named here.
+    #
     # The original path, kept so a single data.json can still be shared with
     # the Node version - see `cabinet/leaderboard.py`.
     data_file=DATA_FILE,
+    # What loops while paused, restored on unmute (engine.js:3315).
+    pause_ambience='pause_beat',
+    # First on the picker: it is the game the cabinet was built around.
+    order=0,
 )

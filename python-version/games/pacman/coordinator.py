@@ -541,7 +541,9 @@ class GameCoordinator:
         """engine.js:2166."""
         self.remaining_dots -= 1
 
-        self.sound_manager.play_dot_sound()
+        # Alternates the two clips on the mixer's throttled channel, so a fast
+        # run of dots queues rather than stacking (engine.js:3256).
+        self.sound_manager.play_queued(C.DOT_SOUNDS)
 
         if self.remaining_dots in C.FRUIT_DOT_THRESHOLDS:
             self.create_fruit()

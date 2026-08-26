@@ -1,16 +1,35 @@
 """The contract between the cabinet and a game.
 
-Adding a title to the machine means three things and no more:
+Adding a title to the machine is **one folder and no edits to anything else**::
 
-1. a package under `games/<id>/` containing a `Game` subclass,
-2. a `GameSpec` describing it - name, blurb, and a `preview.png` beside it,
-3. one line adding that spec to `games/registry.py`.
+    games/<id>/
+        __init__.py
+        game.py          # a `Game` subclass, and `SPEC = GameSpec(...)`
+        preview.png      # the picker's picture (optional)
+        assets/          # this game's own sprites and clips (optional)
+            manifest.json
+            sprites/
+            audio/
 
-Everything else is lent to it. The shell owns the window, the sprite cache, the
-font, the mixer, the pad, the control-label scheme, the high-score file, the
-name-entry modal and the operator menu, and hands them over in a
-`GameContext`. A game is therefore never responsible for anything cabinet-wide,
-which is what keeps two of them from disagreeing about it.
+`games/registry.py` finds it by looking, so nothing shared has to learn the new
+game's name: the picker lists it, it gets its own high-score file, its own
+sprite pack, its own audio namespace and its own entry in the operator menu's
+reset, all keyed off the `GameSpec`. Drop the folder in, and the machine has
+another title; delete it, and it does not.
+
+Everything else is lent to it. The shell owns the window, the font, the mixer,
+the pad, the control-label scheme, the high-score file, the name-entry modal
+and the operator menu, and hands them over in a `GameContext`. A game is
+therefore never responsible for anything cabinet-wide, which is what keeps two
+of them from disagreeing about it.
+
+The two things a game **does** own are its art and its audio, and it owns them
+privately: `context.assets` is that game's pack alone (`cabinet/renderer.py`)
+and `context.sound_manager` is a view that prefixes its clip names
+(`cabinet/sound.py`). Two games may both ship a sprite called `player` and a
+clip called `jump` without knowing about each other. Both are loaded when the
+game is first played rather than at boot, so installing a title costs nothing
+until someone chooses it.
 
 The split of responsibility for input is worth stating explicitly, because it
 is the one place the boundary is not obvious. The shell resolves a keypress or
@@ -22,8 +41,27 @@ physical panel was pressed, and never has to know a modal is open.
 """
 
 import os
+import sys
 
 from .leaderboard import data_file_for
+
+GAMES_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'games',
+)
+
+
+def package_dir_of(factory):
+    """The directory the game's code lives in, found from its own module.
+
+    This is what lets a spec default its preview, its art and its clips to the
+    files sitting beside it, so a game folder describes itself and a path never
+    has to be written out twice. A factory defined somewhere without a file - a
+    lambda in a test, a class built at runtime - simply gets no directory, and
+    the spec falls back to `games/<id>/`.
+    """
+    module = sys.modules.get(getattr(factory, '__module__', None))
+    path = getattr(module, '__file__', None)
+    return os.path.dirname(os.path.abspath(path)) if path else None
 
 
 class GameContext:
@@ -38,8 +76,12 @@ class GameContext:
                  leaderboard, submit_score=None, exit_to_picker=None,
                  quit_cabinet=None):
         self.renderer = renderer
+        # This game's sprite pack, not the machine's - see
+        # `cabinet/renderer.py`. Sprite keys are the game's own.
         self.assets = assets
         self.font = font
+        # A view of the one mixer, scoped to this game's clip names
+        # (`cabinet/sound.py`). Mute and the master volume stay cabinet-wide.
         self.sound_manager = sound_manager
         self.controls = controls
         # This game's board, not the cabinet's - see `cabinet/leaderboard.py`.
@@ -118,6 +160,22 @@ class Game:
     def handle_action(self, action):
         """One of: up, down, left, right, select, delete, pause, mute."""
 
+    def handle_release(self, action):
+        """The same action, let go of.
+
+        Only games with a **held** control need this - a crouch or a charged
+        shot, which on a mat is a foot standing on a panel. Nothing the
+        cabinet itself draws uses releases (a menu cares when a panel goes
+        down, never when it comes up), so they are delivered only to a running
+        game and only while no modal is up.
+
+        A release is not guaranteed to be paired with the press that caused it:
+        a pad unplugged mid-press, or a modal opening between the two, can
+        swallow one. A game must therefore treat this as "not held any more"
+        rather than as an event to count, and `leave` should clear whatever it
+        tracks.
+        """
+
     @property
     def at_attract(self):
         """True on this game's own title screen, with nothing in progress.
@@ -132,34 +190,76 @@ class Game:
 class GameSpec:
     """How a game is listed, previewed and stored, without loading it.
 
-    The picker shows every registered game and each one's high scores before
-    any of them has been constructed, so all of that lives here rather than on
-    the `Game` itself.
+    The picker shows every installed game and each one's high scores before any
+    of them has been constructed, so all of that lives here rather than on the
+    `Game` itself. Nothing here touches the disk or pygame: a spec is cheap
+    enough that a machine with fifty titles builds all fifty at boot.
+
+    Everything but `id`, `title` and `factory` defaults to the convention, and
+    the convention is "the file sitting beside your game.py". A spec that names
+    nothing else is the normal case::
+
+        SPEC = GameSpec(id='runner', title='RUNNER', factory=RunnerGame)
     """
 
     def __init__(self, id, title, factory, tagline='', preview_image=None,
-                 data_file=None):
+                 data_file=None, package_dir=None, asset_root=None,
+                 order=None, pause_ambience=None):
         self.id = id
         self.title = title
         # One line under the preview. Kept to ~32 characters: the panel is 208
         # logical pixels wide and the font cell is 6.
         self.tagline = tagline
         self.factory = factory
-        # A still picture for the picker - a path to a PNG or JPEG, by
-        # convention `games/<id>/preview.png`. Optional; a game without one
-        # gets its title on a black panel rather than a broken box.
+
+        # Where this game's own files live. Found from the factory's module, so
+        # a game that follows the layout names no paths at all.
+        self.package_dir = (package_dir or package_dir_of(factory)
+                            or os.path.join(GAMES_DIR, str(id)))
+
+        # A still picture for the picker - a PNG or JPEG, by convention
+        # `preview.png` beside the game. Optional; a game without one gets its
+        # title on a black panel rather than a broken box.
         #
         # A picture rather than a callback the picker would run every frame:
         # the picker is the screen an idle cabinet sits on for hours, and a
         # file is also the one part of a game anyone can replace without
         # touching code.
-        self.preview_image = preview_image
+        self.preview_image = preview_image or os.path.join(self.package_dir,
+                                                           'preview.png')
+
+        # This game's sprites and clips, described by a `manifest.json` inside
+        # it. Loaded into a pack of this game's own when it is first played -
+        # see `cabinet/renderer.py`. A game with no art has no directory here
+        # and simply gets an empty pack.
+        self.asset_root = asset_root or os.path.join(self.package_dir, 'assets')
+
         # Pac-Man keeps `data/data.json` so one file can still be shared with
         # the Node version; anything new gets `data/scores/<id>.json`.
         self.data_file = data_file or data_file_for(id)
 
+        # Where the picker lists it. Left unset, games sort by title, which is
+        # the only order that stays stable as folders come and go; set it to
+        # pin a favourite to the top of the machine.
+        self.order = order
+
+        # This game's name for the clip that loops while it is paused, if it
+        # has one. The mixer restores ambience on unmute, so it has to be told
+        # rather than asked - and it is per game, since the machine must not
+        # play one game's pause loop over another's (`cabinet/sound.py`).
+        self.pause_ambience = pause_ambience
+
+    @property
+    def sound_prefix(self):
+        """This game's audio namespace, so two games may both ship a `jump`."""
+        return f'{self.id}/'
+
     def create(self, context):
         return self.factory(context)
+
+    def sort_key(self):
+        """Explicitly-ordered games first, in that order, then by title."""
+        return (0, self.order, '') if self.order is not None else (1, 0, self.title)
 
     def __repr__(self):
         return f'<GameSpec {self.id} {os.path.basename(self.data_file)}>'

@@ -113,6 +113,12 @@ def main(argv=None):
         from games import registry
         for spec in registry.all_games():
             print(f'{spec.id:12} {spec.title:20} {spec.data_file}')
+        # A folder that would not import has already printed why during the
+        # scan. Naming it again here matters because "installed but broken"
+        # otherwise looks exactly like "never copied across".
+        for game_id, error in registry.errors():
+            print(f'{game_id:12} {"(not loadable)":20} {error}',
+                  file=sys.stderr)
         return 0
 
     specs, data_files, error = resolve_specs(args)
@@ -206,15 +212,16 @@ def main(argv=None):
     from cabinet.renderer import AssetStore
     from cabinet.sound import SoundManager
 
-    assets = AssetStore().load()
+    # Empty at boot. Sprites and clips belong to a game, not to the machine,
+    # and are read when that game is first played - so installing a title costs
+    # nothing until someone chooses it (`cabinet/renderer.py`).
+    assets = AssetStore()
     font = BitmapFont()
 
     sound_manager = SoundManager(enabled=sound_enabled).load()
     if sound_enabled:
-        # A clip that fails to decode is skipped silently by design, so the
-        # count is the only sign that the audio assets are actually usable.
-        print(f'audio: {len(sound_manager.sounds)} clips loaded, '
-              f'volume={sound_manager.master_volume}')
+        print(f'audio: volume={sound_manager.master_volume}, '
+              f'{len(specs)} game(s) installed')
 
     pads = GamepadManager(
         load_mapping(args.pad_mapping or MAPPING_FILE),

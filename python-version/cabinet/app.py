@@ -16,6 +16,12 @@ open. The rules that used to be scattered through `main.py` as
 The mat is handled ahead of that, in `_handle_pad_event`, because the operator
 menu is opened and driven by *physical panels* rather than by actions - see
 `ui/system_menu.py` for why those are not the same thing.
+
+**Releases are the one asymmetry.** Nothing the cabinet draws has a held
+control - a menu cares when a panel goes down, never when it comes up - so a
+let-go action skips the routing table entirely and is delivered only to a
+running game, and dropped while a modal is up. Games that need it override
+`Game.handle_release` - a crouch held down is the shape of thing it exists for.
 """
 
 import pygame
@@ -75,22 +81,25 @@ class Cabinet:
         # somewhere else - at the Node version's file, usually.
         self.data_files = dict(data_files or {})
 
-        # Origin at the top-left of the screen. A game whose world coordinates
-        # are relative to an inset playfield makes its own - see
-        # `games/pacman/game.py`.
-        self.renderer = Renderer(surface, assets)
+        # Origin at the top-left of the screen, and drawing from the shell's own
+        # pack - which is empty, because every screen the cabinet owns is text
+        # and rectangles. A game gets a pack of its own and makes its own
+        # renderer if its world is inset; see `games/pacman/game.py`.
+        self.renderer = Renderer(surface, assets.shell())
 
         self.running = True
         self.screen = SCREEN_PICKER
         self.game = None
         self.spec = None
 
-        # Both keyed by game id and built on demand. A board is read from disk
+        # All keyed by game id and built on demand. A board is read from disk
         # per call, so holding one costs nothing; a game holds its whole sprite
         # and timer state, so it is built the first time it is played and kept
-        # for the rest of the session.
+        # for the rest of the session. Its clips are loaded once and stay in
+        # the shared table - re-adding them would decode the same files again.
         self._boards = {}
         self._games = {}
+        self._audio_loaded = set()
 
         self.picker = GameSelect(
             self.renderer, font, self.specs, self.leaderboard_for,
@@ -117,14 +126,46 @@ class Cabinet:
             self._boards[spec.id] = board
         return board
 
+    def _assets_for(self, spec):
+        """This game's sprite pack, read from disk the first time it is played.
+
+        Not at boot: a machine with thirty titles installed would otherwise
+        load thirty games' art to show one picker. The cost lands between
+        choosing a game and its title screen appearing, which is the one moment
+        in the session where a pause is invisible.
+        """
+        return self.assets.pack(spec.id, spec.asset_root)
+
+    def _sound_for(self, spec, assets):
+        """This game's view of the mixer, with its clips loaded under its prefix.
+
+        The clips join the cabinet's one table, so the operator menu's mute
+        still covers them; the prefix is what keeps two games' `jump` apart.
+        """
+        if spec.id not in self._audio_loaded:
+            loaded = self.sound_manager.add_clips(spec.asset_root, assets.audio,
+                                                  prefix=spec.sound_prefix)
+            self._audio_loaded.add(spec.id)
+
+            # A sprite that will not load and a clip that will not decode are
+            # both skipped by design, so these counts are the only sign the
+            # game's files actually shipped. run-game.sh tees this, and it is
+            # the first thing to read when a cabinet is silent or blank.
+            audio = (f'{loaded}/{len(assets.audio)} clips'
+                     if self.sound_manager.enabled else 'sound off')
+            print(f'{spec.id}: {len(assets.sheets)} sprites, {audio}')
+        return self.sound_manager.for_game(spec.sound_prefix,
+                                           pause_ambience=spec.pause_ambience)
+
     def _game_for(self, spec):
         game = self._games.get(spec.id)
         if game is None:
+            assets = self._assets_for(spec)
             context = GameContext(
                 renderer=self.renderer,
-                assets=self.assets,
+                assets=assets,
                 font=self.font,
-                sound_manager=self.sound_manager,
+                sound_manager=self._sound_for(spec, assets),
                 controls=self.controls,
                 leaderboard=self.leaderboard_for(spec),
                 submit_score=self._submit_score,
@@ -248,11 +289,30 @@ class Cabinet:
         elif self.game is not None:
             self.game.handle_action(action)
 
+    def _release(self, actions):
+        """Hand a let-go control to the game, if one is running unmodal.
+
+        Dropped otherwise. A release that arrives while a modal is up is not
+        held back for later: the game is told what is *not* held, and by the
+        time the modal closes that is true whether or not the press was ever
+        seen. `Game.handle_release` documents the contract.
+        """
+        if not actions or self._modal_open or self.screen != SCREEN_GAME:
+            return
+        if self.game is None:
+            return
+        for action in actions:
+            self.game.handle_release(action)
+
     def _handle_pad_event(self, event):
         # Always let the manager see the event first: it also does the hotplug
-        # bookkeeping, which has nothing to do with what a modal wants.
-        actions = self.pads.handle(event)
+        # bookkeeping, which has nothing to do with what a modal wants. Presses
+        # and releases come back together because a hat carries both in one
+        # event - see `GamepadManager.resolve`.
+        actions, released = self.pads.resolve(event)
         panels = self.pads.panels(event)
+
+        self._release(released)
 
         if self.system_menu.open:
             self.system_menu.feed(panels=panels, actions=actions)
@@ -329,6 +389,14 @@ class Cabinet:
             if self._system_menu_armed():
                 self._open_system_menu()
 
+    def _handle_keyup(self, event):
+        """Only releases. Nothing the cabinet owns has a held control."""
+        pad_bound = self.pads.key_releases(event)
+        if pad_bound:
+            self._release(pad_bound)
+        elif event.key in MOVEMENT_KEYS:
+            self._release((MOVEMENT_KEYS[event.key],))
+
     def _handle_escape(self):
         """Pause, back out, or quit - whichever the current screen affords.
 
@@ -394,6 +462,8 @@ class Cabinet:
                     self.quit()
                 elif event.type == pygame.KEYDOWN:
                     self._handle_keydown(event)
+                elif event.type == pygame.KEYUP:
+                    self._handle_keyup(event)
                 elif event.type in GamepadManager.EVENT_TYPES:
                     # Includes the hotplug events, so a pad plugged in after
                     # launch starts working without a restart.

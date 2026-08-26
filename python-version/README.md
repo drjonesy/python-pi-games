@@ -1,13 +1,21 @@
 # Arcade cabinet — pygame
 
 A native Python + pygame arcade **platform** built to run on a Raspberry Pi 4B+
-without Chromium. It boots into a game picker; Pac-Man is the first title on it,
-a port of the React/Vite version in [`../node-version/`](../node-version/).
+without Chromium. It boots into a game picker. One title is installed:
 
-Every game gets the same things from the machine: the screen, the sprite cache,
-the 5×7 font, the mixer, the dance mat, the on-screen control labelling, **its
-own high-score table with its own reset**, the name-entry modal and the operator
-menu. See [Adding a game](#adding-a-game).
+| Game | What it is |
+|---|---|
+| **PAC-MAN** | A port of the React/Vite version in [`../node-version/`](../node-version/) |
+
+Every game gets the same things from the machine: the screen, the 5×7 font, the
+mixer, the dance mat, the on-screen control labelling, **its own high-score
+table with its own reset**, the name-entry modal and the operator menu. What it
+owns privately is its rules, its art and its audio — a sprite pack and a clip
+namespace of its own, so two games cannot collide.
+
+**Adding a title is dropping a folder into `games/`**; no shared file is edited,
+and a game that will not import costs that one title rather than the machine.
+See [Adding a game](#adding-a-game).
 
 Pac-Man's gameplay is a direct port of [`../node-version/src/game/engine.js`](../node-version/src/game/engine.js) —
 same ghost AI, same speeds, same timings, same scoring. Every constant is
@@ -55,8 +63,9 @@ title screen, **Esc** comes back here; on the mat there is no spare panel for
 that, so the route back is **CHANGE GAME** in
 [the operator menu](#the-operator-menu-select). On the picker itself, Esc quits.
 
-The preview is a **still image file** — `games/<id>/preview.png`, pointed at by
-`GameSpec.preview_image`. PNG or JPEG, either works. It is loaded on first sight
+The preview is a **still image file** — `games/<id>/preview.png`, found beside
+the game unless `GameSpec.preview_image` names somewhere else. PNG or JPEG,
+either works. It is loaded on first sight
 and scaled to the panel once, so an idle cabinet parked on this screen costs one
 blit a frame. Nothing on the picker animates.
 
@@ -66,16 +75,18 @@ else. Anything else is aspect-fitted and centred. A missing or unreadable file
 falls back to the game's name on a black panel: the picker must still list a
 game whose art did not ship.
 
-Pac-Man's is generated rather than hand-drawn, because it is assembled from art
-the game already owns and a second copy of the board would be one more thing to
-keep in step:
+Pac-Man's preview is generated rather than hand-drawn, because it is assembled
+from art the game already owns — a second copy of the board would be one more
+thing to keep in step. Note that a preview is a *composed scene*, not a
+screenshot; Pac-Man's happens to be its whole maze at half scale.
 
 ```bash
-.venv/bin/python tools/make_preview.py     # writes games/pacman/preview.png
+.venv/bin/python tools/make_preview.py                # every game
+.venv/bin/python tools/make_preview.py --game pacman
 ```
 
-The output is committed, like everything under `assets/`, so the Pi never runs
-it. Re-run it if the maze or the character sheets change.
+The output is committed, like everything under a game's `assets/`, so the Pi never runs
+it. Re-run it if the art changes.
 
 ## Controls
 
@@ -118,7 +129,8 @@ struck through when muted. Audio is switched from
 A USB pad is picked up automatically, including one plugged in *after* launch.
 Everything it can do is expressed as **direction + select + delete + pause +
 mute**, so a DDR mat, a gamepad and an arcade encoder all use the same code
-path. `mute` is left unbound on the measured mat — see [the shape
+path. Panels also report when they are **let go** — a game with a held control
+needs that, and on a mat that is a foot resting on a panel. `mute` is left unbound on the measured mat — see [the shape
 panels](#the-shape-panels-do-nothing-during-play); it lives in
 [the operator menu](#sound--audio-on-and-off) instead — but a gamepad, which has
 thumb buttons rather than panels underfoot, can safely bind it.
@@ -466,15 +478,19 @@ The game prints its audio state at startup, and `run-game.sh` tees that to
 
 ```
 audio: driver=alsa mixer=(44100, -16, 2)
-audio: 14 clips loaded, volume=1
+audio: volume=1, 1 game(s) installed
+pacman: 68 sprites, 14/14 clips
 ```
 
-Read it in that order — each line rules something out:
+The first two lines are printed at startup; the third when a game is first
+chosen, since a game's art and audio are loaded then rather than at boot. Read
+them in that order — each rules something out:
 
 | What you see | What it means |
 |---|---|
 | `audio: OFF (...)` | The mixer never opened. The reason is in the brackets. |
-| `0 clips loaded` | The mixer opened but no audio decoded — check `assets/audio/`. |
+| `0/14 clips` | The mixer opened but no audio decoded — check `games/<id>/assets/audio/`. |
+| `0/0 clips` or `0 sprites` | That game's `manifest.json` lists nothing, or would not parse. |
 | `volume=0` | **The game is muted.** SOUND in the operator menu, or `Q`. |
 | Looks correct, still silent | Routing — the sound is going somewhere that is not the TV. |
 
@@ -528,8 +544,16 @@ mixer's output device, and `wpctl status` on Bookworm.
 
 ## Assets
 
-`assets/` is generated and committed. The Pi loads PNG and OGG only — it needs
-neither `cairosvg` nor `ffmpeg`.
+**Assets belong to a game, not to the machine.** Each one keeps its sprites and
+clips in `games/<id>/assets/`, described by a `manifest.json` beside them, and
+they are loaded into a pack of that game's own the first time it is played.
+Sprite keys and clip names are therefore scoped: a second game may have its own
+`player` and its own `jump` without renaming Pac-Man's, and a game that is
+installed but never chosen costs nothing at boot. The only thing under the
+top-level `assets/` is the desktop shortcut's icon.
+
+Pac-Man's pack is generated and committed. The Pi loads PNG and OGG only — it
+needs neither `cairosvg` nor `ffmpeg`.
 
 To regenerate after changing the source art (run on a desktop, not the Pi):
 
@@ -540,8 +564,10 @@ brew install ffmpeg
 ```
 
 This rasterizes 68 sprites from the reference's ~50 SVGs at their exact final
-pixel size, transcodes 14 MP3s to Ogg Vorbis, and writes `assets/manifest.json`
-(frame counts and dimensions). Total: ~760 KB.
+pixel size, transcodes 14 MP3s to Ogg Vorbis, and writes
+`games/pacman/assets/manifest.json` (frame counts and dimensions). Total:
+~760 KB. It converts *this* game's art; another game brings its own however it
+likes, so long as it ends as a manifest and files beside it.
 
 Ogg Vorbis rather than MP3 because SDL_mixer decodes Vorbis with a bundled
 stb_vorbis on every build, so it cannot break on the Pi the way MP3 can — and
@@ -570,9 +596,9 @@ cabinet/
   engine.py                the fixed-timestep loop
   gamepad.py               pad bindings -> actions (dance mat, gamepad, encoder)
   controls.py              on-screen labelling: keyboard vs mat
-  renderer.py              sprite cache + blit layer
+  renderer.py              blit layer + one sprite pack per game
   font.py                  5x7 bitmap font
-  sound.py                 SoundManager
+  sound.py                 one mixer, one clip namespace per game
   settings.py              data/settings.json (volume, controller)
   leaderboard.py           JSON high scores — one board per game
   ui/game_select.py        the picker: list, preview image, that game's scores
@@ -580,10 +606,11 @@ cabinet/
   ui/system_menu.py        the SELECT operator menu
   ui/hints.py              the bracketed control reminders
 games/
-  registry.py              every installed game, in picker order
+  registry.py              finds every installed game by scanning this folder
   pacman/
     game.py                the seam: Game subclass + GameSpec
     preview.png            the picker's still (tools/make_preview.py)
+    assets/                this game's own sprites, clips and manifest
     constants.py           every literal, annotated with engine.js line numbers
     coordinator.py         GameCoordinator — the game state machine
     character_util.py      grid math, snap_to_grid, turning, tunnel warp
@@ -593,12 +620,19 @@ games/
     pickup.py              pacdot | powerPellet | fruit
     timers.py              pausable timers driven by simulation time
     ui/{menu,hud}.py       title screen, score row / lives / pause overlay
-tools/convert_assets.py    build-time SVG->PNG, MP3->OGG
-tools/make_preview.py      build-time picker art for Pac-Man
+assets/icon.png            the desktop shortcut's icon — the cabinet's own
+tools/convert_assets.py    build-time SVG->PNG, MP3->OGG (into games/pacman/)
+tools/make_preview.py      build-time picker art
 tools/gamepad_test.py      pad identification + calibration
 tools/pad_report.py        per-panel raw event log (standalone; pygame only)
-tests/                     452 tests
+tests/                     496 tests
 ```
+
+**The machine holds no art of its own.** Every screen the cabinet draws — the
+picker, the name-entry modal, the operator menu — is text and rectangles, so
+`assets/` contains only the desktop icon. Sprites and clips belong to a game and
+live under `games/<id>/assets/`, which is what makes a second game's art
+incapable of colliding with a first game's.
 
 **Input funnels through one place.** Pygame events become the eight actions the
 whole machine speaks — four directions plus `select`, `delete`, `pause`,
@@ -609,6 +643,15 @@ whether one is open. The mat is resolved ahead of that, because the operator
 menu is driven by *physical panels* rather than by actions — see
 [the shape panels](#the-shape-panels-do-nothing-during-play).
 
+**Releases are the one asymmetry.** Nothing the cabinet draws has a held
+control — a menu cares when a panel goes down, never when it comes up — so a
+let-go action skips the routing table entirely and goes only to a running game,
+and is dropped while a modal is up. A game that wants it overrides
+`Game.handle_release` — a crouch held down is the shape of thing it exists for.
+Because a release can be lost (a modal opening between press and release, a pad
+unplugged mid-step), a game must treat it as *"not held any more"* rather than
+as an event to count.
+
 The browser's `window.dispatchEvent` messaging is replaced by a small internal
 bus ([`games/pacman/events.py`](games/pacman/events.py)), but the event **names**
 are kept verbatim (`eatGhost`, `restoreGhost`, `dotEaten`, …) so grepping finds
@@ -616,21 +659,71 @@ the same call sites in both codebases.
 
 ### Adding a game
 
-Three things, and nothing else in the codebase needs to learn about it:
+**Drop a folder into `games/`.** Nothing shared is edited, so nothing shared can
+be forgotten — [`games/registry.py`](games/registry.py) finds a game by looking,
+not by being told:
 
-1. A package under `games/<id>/` with a
-   [`Game`](cabinet/game.py) subclass — `enter`, `leave`, `update`, `render`,
-   `handle_action`, `simulating`, `at_attract`. The defaults are inert, so
-   override only what the game does.
-2. A `GameSpec` describing it: id, title, one-line tagline, factory, and a
-   `preview_image` — a 112×124 PNG or JPEG beside the package.
-3. One line adding that spec to [`games/registry.py`](games/registry.py).
+```
+games/runner/
+  __init__.py
+  game.py          a Game subclass, and SPEC = GameSpec(...)
+  preview.png      112x124, the picker's still            (optional)
+  assets/
+    manifest.json  {"sprites": {...}, "audio": {...}}     (optional)
+    sprites/
+    audio/
+```
+
+A directory here is a game if it is an importable package whose `game.py` — or
+its `__init__.py`, for a single-file title — exposes a `SPEC`. Everything else
+is convention: the preview, the art and the clips are found *beside* the module
+the factory came from, so a spec that names nothing but the essentials is the
+normal case.
+
+```python
+class RunnerGame(Game):
+    def render(self, interp):
+        self.context.renderer.draw_image_at('player', 20, 40)
+
+SPEC = GameSpec(id='runner', title='RUNNER', tagline='RUN', factory=RunnerGame)
+```
+
+The [`Game`](cabinet/game.py) methods are `enter`, `leave`, `update`, `render`,
+`handle_action`, `simulating`, `at_attract`, and `handle_release` if it has a
+held control. The defaults are inert, so override only what the game does. The
+id must match the folder name: it is also the score file's name and what
+`--game` takes, and letting the two disagree would file one game's scores under
+another's.
 
 The picker, the per-game score file, the name-entry modal and the operator
 menu's reset all key off the spec. A game is handed a `GameContext` carrying the
 shared services and three hooks — `submit_score`, `exit_to_picker`,
 `quit_cabinet` — and is never responsible for anything cabinet-wide, which is
 what keeps two games from disagreeing about it.
+
+**A game owns its art and audio, and owns them privately.** `context.assets` is
+that game's pack alone and `context.sound_manager` is a view that prefixes its
+clip names, so two games may both ship a sprite called `player` and a clip
+called `jump` without knowing about each other. Both are read from disk when the
+game is first played rather than at boot, so installing a title costs nothing
+until someone chooses it — which is what makes the number of games unbounded in
+practice and not just on paper.
+
+Audio still lands in the machine's **one** clip table under that prefix, so a
+single master volume and a single mute cover everything; a game holding a mixer
+of its own would be a second thing the operator menu had to know how to
+silence. A game with a loop that should keep playing while paused names it as
+`pause_ambience=` on its spec.
+
+**A broken game costs one title, not the machine.** A folder that will not
+import is skipped with a line on stdout (`run-game.sh` tees the log) and named
+by `--list-games`; the rest of the cabinet boots and plays as usual. That
+matters because a cabinet has no keyboard and cannot be recovered from a
+traceback at startup.
+
+Games are listed alphabetically by title — the only order that stays stable as
+folders come and go — unless a spec sets `order=`, which pins it to the front.
+Pac-Man sets `order=0`.
 
 `cabinet/constants.py` holds the screen (224×296, portrait), the palette and the
 loop rates. A game lays itself out inside that rather than changing it; Pac-Man
@@ -739,7 +832,7 @@ way to turn the machine off.
 .venv/bin/python -m pytest tests/ -q
 ```
 
-452 tests, all headless — no display and no audio device required. Coverage is
+469 tests, all headless — no display and no audio device required. Coverage is
 aimed at what is easy to break and hard to spot: ghost-house respawn at 120Hz
 from all four corners, ghost targeting per ghost per mode (including Inky's
 mirror math and Clyde's 8-tile flip), the scared-mode distance inversion, the

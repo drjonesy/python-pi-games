@@ -44,7 +44,35 @@ import time
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
-ASSET_ROOT = os.path.join(REPO_ROOT, 'assets')
+GAMES_DIR = os.path.join(REPO_ROOT, 'games')
+
+# Clips belong to a game, so this plays one game's audio - by default whichever
+# is listed first alphabetically, preferring Pac-Man since it is the title the
+# cabinet was built around. Read off the disk rather than through the registry
+# so this file still imports nothing from `cabinet/` or `games/` and can be
+# copied to a Pi on its own.
+PREFERRED_GAME = 'pacman'
+
+
+def find_asset_root(game_id=None):
+    """`games/<id>/assets`, or the first game that has a manifest."""
+    if game_id:
+        return os.path.join(GAMES_DIR, game_id, 'assets')
+
+    try:
+        candidates = sorted(os.listdir(GAMES_DIR))
+    except OSError:
+        return os.path.join(GAMES_DIR, PREFERRED_GAME, 'assets')
+
+    if PREFERRED_GAME in candidates:
+        candidates.insert(0, candidates.pop(candidates.index(PREFERRED_GAME)))
+
+    for name in candidates:
+        root = os.path.join(GAMES_DIR, name, 'assets')
+        if os.path.exists(os.path.join(root, 'manifest.json')):
+            return root
+
+    return os.path.join(GAMES_DIR, PREFERRED_GAME, 'assets')
 
 # Ordered best-first for a Pi running a desktop: the compatibility layers route
 # through whatever the desktop is already using (and therefore to HDMI), while
@@ -69,11 +97,15 @@ def parse_args(argv=None):
     parser.add_argument('--clip', default=None, metavar='NAME',
                         help='manifest clip to play (default: the game start '
                              'jingle, which is the longest)')
+    parser.add_argument('--game', default=None, metavar='ID',
+                        help='take the clip from this game\'s assets '
+                             f'(default: {PREFERRED_GAME}, or the first '
+                             'installed game that ships audio)')
     return parser.parse_args(argv)
 
 
-def load_manifest():
-    path = os.path.join(ASSET_ROOT, 'manifest.json')
+def load_manifest(asset_root):
+    path = os.path.join(asset_root, 'manifest.json')
     try:
         with open(path, encoding='utf-8') as handle:
             parsed = json.load(handle)
@@ -158,11 +190,12 @@ def main(argv=None):
     import pygame
     pygame.init()
     print(f'pygame {pygame.version.ver}, SDL {".".join(map(str, pygame.get_sdl_version()))}')
-    print(f'assets: {ASSET_ROOT}')
+    asset_root = find_asset_root(args.game)
+    print(f'assets: {asset_root}')
 
-    manifest = load_manifest()
+    manifest = load_manifest(asset_root)
     name, rel_path = pick_clip(manifest, args.clip)
-    clip_path = os.path.join(ASSET_ROOT, rel_path) if rel_path else None
+    clip_path = os.path.join(asset_root, rel_path) if rel_path else None
 
     if clip_path and not os.path.exists(clip_path):
         print(f'  ! missing clip file: {clip_path}')

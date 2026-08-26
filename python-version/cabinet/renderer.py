@@ -3,10 +3,23 @@
 The browser version rasterized each SVG once per target size into an offscreen
 canvas and blitted from there. The equivalent here is simpler, because
 `tools/convert_assets.py` already rasterized everything at the size it will be
-drawn at: this class loads the PNGs, calls `convert_alpha()` on each - blitting
+drawn at: `AssetPack` loads the PNGs, calls `convert_alpha()` on each - blitting
 an unconverted surface every frame is one of the few genuinely slow things you
 can do in pygame - and keeps a small cache for the handful of sprites that are
 drawn at a size other than their native one.
+
+**A pack per game, not a pool per cabinet.** Each game's art lives under
+`games/<id>/assets/`, described by a `manifest.json` beside it, and is loaded
+into a pack of its own. Two consequences, and they are the point:
+
+* sprite keys are scoped, so a second game may have its own `player` without
+  renaming Pac-Man's, and a game is handed *its* pack as `context.assets` -
+  ported code keeps calling `assets.scaled('maze_blue', ...)` unchanged;
+* nothing is read from disk until a game is first played, so a machine with
+  thirty titles installed boots as fast as one with a single title and holds
+  only the art it has actually shown.
+
+`AssetStore` is the registry of packs, and the thing the shell holds.
 
 A game's world-space coordinates are relative to its playfield's top-left
 corner - for Pac-Man, the maze's, exactly as they were on the canvas. `origin`
@@ -20,40 +33,82 @@ import os
 
 import pygame
 
+# The cabinet's own directory - the icon and anything else the shell owns. A
+# game's art is *not* here any more; it is under `games/<id>/assets/`.
 ASSET_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           'assets')
-MANIFEST_PATH = os.path.join(ASSET_ROOT, 'manifest.json')
+
+EMPTY_MANIFEST = {'sprites': {}, 'audio': {}}
 
 
-class AssetStore:
-    """Loads and owns every sprite surface."""
+def read_manifest(root):
+    """The manifest at `root`, or an empty one.
 
-    def __init__(self, asset_root=ASSET_ROOT):
-        self.asset_root = asset_root
-        self.manifest = {}
+    A missing, unparseable or wrongly-shaped file is an empty pack rather than
+    an error: the cabinet has to boot, and a game whose art did not ship must
+    fail as one unplayable title on the picker, not as a machine that does not
+    start. `AssetPack.load` reports the sprite count so the loss is visible.
+    """
+    try:
+        with open(os.path.join(root, 'manifest.json'), encoding='utf-8') as handle:
+            parsed = json.load(handle)
+    except (OSError, ValueError):
+        return dict(EMPTY_MANIFEST)
+
+    if not isinstance(parsed, dict):
+        return dict(EMPTY_MANIFEST)
+
+    manifest = dict(EMPTY_MANIFEST)
+    for section in ('sprites', 'audio'):
+        value = parsed.get(section)
+        if isinstance(value, dict):
+            manifest[section] = value
+    return manifest
+
+
+class AssetPack:
+    """One game's sprites, loaded and cached.
+
+    Keys are whatever that game's manifest calls them; nothing outside the pack
+    can see them, which is what lets two games use the same name.
+    """
+
+    def __init__(self, root, name=''):
+        self.root = root
+        self.name = name
+        self.manifest = dict(EMPTY_MANIFEST)
+        self.loaded = False
         self.sheets = {}        # key -> native Surface
         self._scaled = {}       # (key, w, h) -> Surface
         self._frames = {}       # (key, size) -> [Surface]
         self._tinted = {}       # (key, w, h, tint) -> Surface
 
     def load(self):
-        """Loads the manifest and every PNG it lists."""
-        manifest_path = os.path.join(self.asset_root, 'manifest.json')
-        if not os.path.exists(manifest_path):
-            raise SystemExit(
-                f'asset manifest not found at {manifest_path}.\n'
-                'Run: python tools/convert_assets.py',
-            )
+        """Loads the manifest and every PNG it lists. Idempotent.
 
-        with open(manifest_path, encoding='utf-8') as handle:
-            self.manifest = json.load(handle)
+        A sprite that will not load is skipped, exactly as a clip that will not
+        decode is (`cabinet/sound.py`). One missing PNG leaves a game drawing
+        one thing less; raising here would take the whole cabinet down with it.
+        """
+        if self.loaded:
+            return self
 
-        for key, spec in self.manifest.get('sprites', {}).items():
-            path = os.path.join(self.asset_root, spec['file'])
-            surface = pygame.image.load(path).convert_alpha()
-            self.sheets[key] = surface
+        self.manifest = read_manifest(self.root)
 
+        for key, spec in self.manifest['sprites'].items():
+            try:
+                path = os.path.join(self.root, spec['file'])
+                self.sheets[key] = pygame.image.load(path).convert_alpha()
+            except (pygame.error, OSError, TypeError, KeyError):
+                continue
+
+        self.loaded = True
         return self
+
+    @property
+    def audio(self):
+        """`{name: relative path}` for this game's clips, for `SoundManager`."""
+        return self.manifest['audio']
 
     def spec(self, key):
         return self.manifest['sprites'][key]
@@ -148,6 +203,40 @@ class AssetStore:
 
         self._tinted[cache_key] = result
         return result
+
+
+class AssetStore:
+    """Every pack the cabinet has loaded, keyed by game id.
+
+    The shell holds one of these and hands each game its own pack. It is a
+    registry rather than a pool: nothing is shared between packs, so a game can
+    neither see another's art nor be broken by it. `pack()` is cached, so
+    leaving and re-entering a game does not re-read a single PNG.
+
+    The shell's own pack is the empty one - the picker, the name-entry modal and
+    the operator menu draw text and rectangles only, which is why nothing but a
+    game has art to load.
+    """
+
+    def __init__(self):
+        self.packs = {}
+
+    def pack(self, name, root):
+        """The named pack, loading it from `root` the first time it is asked for.
+
+        Called as a game is constructed, which is the moment the delay is
+        affordable - a fraction of a second behind the picker, and never during
+        play.
+        """
+        existing = self.packs.get(name)
+        if existing is None:
+            existing = AssetPack(root, name).load()
+            self.packs[name] = existing
+        return existing
+
+    def shell(self):
+        """The empty pack the cabinet's own screens draw with."""
+        return self.packs.setdefault('', AssetPack(ASSET_ROOT, ''))
 
 
 class Renderer:

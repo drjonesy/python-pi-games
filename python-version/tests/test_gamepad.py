@@ -363,3 +363,95 @@ def test_device_filter_is_off_by_default():
     assert DEFAULT_MAPPING['device'] is None
     pads = GamepadManager(DEFAULT_MAPPING)
     assert pads._accepts(0) is True
+
+
+# -- releases ----------------------------------------------------------------
+#
+# A game with a *held* control needs to know when a panel comes up, not only
+# when it goes down - a crouch is one, and on a mat that is a foot resting on
+# the down panel. Nothing the cabinet itself draws uses these, so the risk
+# is not that a release does the wrong thing but that it never arrives, or that
+# asking for it consumes the press.
+
+def test_a_button_release_reports_its_actions():
+    pads = manager({'down': [{'type': 'button', 'button': 1}]})
+
+    pressed, released = pads.resolve(event(pygame.JOYBUTTONDOWN, button=1))
+    assert (pressed, released) == (('down',), ())
+
+    pressed, released = pads.resolve(event(pygame.JOYBUTTONUP, button=1))
+    assert (pressed, released) == ((), ('down',))
+
+
+def test_button_up_is_an_event_the_shell_listens_for():
+    """It has to be in EVENT_TYPES or the shell drops it before `resolve` is
+    ever called, and the duck sticks on forever."""
+    assert pygame.JOYBUTTONUP in GamepadManager.EVENT_TYPES
+
+
+def test_handle_is_still_only_the_press_half():
+    pads = manager({'down': [{'type': 'button', 'button': 1}]})
+    assert pads.handle(event(pygame.JOYBUTTONDOWN, button=1)) == ('down',)
+    assert pads.handle(event(pygame.JOYBUTTONUP, button=1)) == ()
+
+
+def test_an_axis_returning_to_centre_is_a_release():
+    pads = manager({'down': [{'type': 'axis', 'axis': 1, 'value': 1}]})
+
+    pads.resolve(event(pygame.JOYAXISMOTION, axis=1, value=1.0))
+    pressed, released = pads.resolve(
+        event(pygame.JOYAXISMOTION, axis=1, value=0.0),
+    )
+    assert (pressed, released) == ((), ('down',))
+
+
+def test_an_axis_swung_across_centre_presses_and_releases_at_once():
+    """The reason `resolve` returns both halves. Asking twice would consume the
+    crossing once and lose the other half."""
+    pads = manager({
+        'left': [{'type': 'axis', 'axis': 0, 'value': -1}],
+        'right': [{'type': 'axis', 'axis': 0, 'value': 1}],
+    })
+
+    pads.resolve(event(pygame.JOYAXISMOTION, axis=0, value=-1.0))
+    pressed, released = pads.resolve(
+        event(pygame.JOYAXISMOTION, axis=0, value=1.0),
+    )
+    assert (pressed, released) == (('right',), ('left',))
+
+
+def test_a_hat_returning_to_centre_is_a_release():
+    pads = manager({'up': [{'type': 'hat', 'hat': 0, 'axis': 'y', 'value': 1}]})
+
+    pads.resolve(event(pygame.JOYHATMOTION, hat=0, value=(0, 1)))
+    pressed, released = pads.resolve(
+        event(pygame.JOYHATMOTION, hat=0, value=(0, 0)),
+    )
+    assert (pressed, released) == ((), ('up',))
+
+
+def test_a_held_hat_does_not_re_release():
+    pads = manager({'up': [{'type': 'hat', 'hat': 0, 'axis': 'y', 'value': 1}]})
+
+    pads.resolve(event(pygame.JOYHATMOTION, hat=0, value=(0, 1)))
+    assert pads.resolve(event(pygame.JOYHATMOTION, hat=0, value=(0, 1))) == (
+        (), (),
+    )
+
+
+def test_hat_state_is_dropped_when_the_pad_goes_away():
+    """A pad unplugged mid-press must not leave a phantom direction held, or
+    the next one plugged in inherits it."""
+    pads = manager({'up': [{'type': 'hat', 'hat': 0, 'axis': 'y', 'value': 1}]})
+    pads.resolve(event(pygame.JOYHATMOTION, hat=0, value=(0, 1)))
+
+    pads.resolve(event(pygame.JOYDEVICEREMOVED, instance_id=0))
+    assert not [key for key in pads._hat_state if key[0] == 0]
+
+
+def test_key_releases_use_the_same_table_as_key_actions():
+    """A binding names a control, not an edge."""
+    pads = manager({'down': [{'type': 'key', 'key': 's'}]})
+    down = event(pygame.KEYDOWN, key=pygame.K_s)
+    assert pads.key_actions(down) == ('down',)
+    assert pads.key_releases(event(pygame.KEYUP, key=pygame.K_s)) == ('down',)

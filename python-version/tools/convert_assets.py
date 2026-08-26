@@ -7,9 +7,11 @@ at the size it will actually be drawn at, and every MP3 is transcoded to OGG
 Vorbis (pygame.mixer's MP3 support depends on the SDL build and is a common
 source of Pi-specific breakage; OGG is reliable).
 
-The output - `assets/sprites/*.png`, `assets/audio/*.ogg` and
-`assets/manifest.json` - is committed, so the Pi needs neither cairosvg nor
-ffmpeg installed.
+The output is Pac-Man's asset pack - `games/pacman/assets/sprites/*.png`,
+`.../audio/*.ogg` and `.../manifest.json` - and it is committed, so the Pi needs
+neither cairosvg nor ffmpeg installed. It goes beside the game rather than into
+a machine-wide pool because art belongs to a title: this tool converts *this*
+game's assets, and another game brings its own however it likes.
 
 Requirements (desktop only)::
 
@@ -31,9 +33,10 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_SOURCE = os.path.normpath(
     os.path.join(REPO_ROOT, '..', 'node-version', 'public', 'app', 'style'),
 )
-SPRITE_OUT = os.path.join(REPO_ROOT, 'assets', 'sprites')
-AUDIO_OUT = os.path.join(REPO_ROOT, 'assets', 'audio')
-MANIFEST_OUT = os.path.join(REPO_ROOT, 'assets', 'manifest.json')
+ASSET_OUT = os.path.join(REPO_ROOT, 'games', 'pacman', 'assets')
+SPRITE_OUT = os.path.join(ASSET_OUT, 'sprites')
+AUDIO_OUT = os.path.join(ASSET_OUT, 'audio')
+MANIFEST_OUT = os.path.join(ASSET_OUT, 'manifest.json')
 
 # The art is authored at 8px per tile, which is the scale the game renders at,
 # so every sprite rasterizes 1:1 with no resampling. See constants.SCALE.

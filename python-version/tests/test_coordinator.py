@@ -36,8 +36,8 @@ class StubSound:
     def play(self, sound):
         self.played.append(sound)
 
-    def play_dot_sound(self):
-        self.played.append('dot')
+    def play_queued(self, names):
+        self.played.append(tuple(names))
 
     def set_ambience(self, sound, keep_current_ambience=False):
         self.ambience.append(sound)

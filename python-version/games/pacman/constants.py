@@ -205,6 +205,12 @@ def combo_points(ghost_combo):
     return 100 * (2 ** ghost_combo)
 
 
+# Alternated on the mixer's throttled channel as dots are eaten
+# (engine.js:3256). Names are this game's own - they are loaded under the
+# `pacman/` prefix and no other game can see them.
+DOT_SOUNDS = ('dot_1', 'dot_2')
+
+
 def determine_siren(remaining_dots):
     """Background siren for the current dot count (engine.js:2211-2223)."""
     if remaining_dots > 40:

@@ -238,9 +238,13 @@ class GamepadManager:
     # Devices are opened in response to JOYDEVICEADDED, which SDL also emits
     # for anything already plugged in - so a pad connected after launch works
     # the same as one connected before it.
+    #
+    # JOYBUTTONUP is here for games with a *held* control - a crouch is one,
+    # and on a mat that is a foot standing on the down panel. See `resolve`.
     EVENT_TYPES = frozenset({
         pygame.JOYDEVICEADDED, pygame.JOYDEVICEREMOVED,
-        pygame.JOYBUTTONDOWN, pygame.JOYHATMOTION, pygame.JOYAXISMOTION,
+        pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP,
+        pygame.JOYHATMOTION, pygame.JOYAXISMOTION,
     })
 
     def __init__(self, mapping=None):
@@ -250,6 +254,7 @@ class GamepadManager:
 
         self.joysticks = {}          # instance_id -> Joystick
         self._axis_state = {}        # (instance_id, axis) -> -1 | 0 | 1
+        self._hat_state = {}         # (instance_id, hat, 'x'|'y') -> -1 | 0 | 1
         self._lookup = {}            # binding key -> tuple of actions
         self._panel_lookup = {}      # binding key -> tuple of panel names
         self._build_lookup()
@@ -331,6 +336,8 @@ class GamepadManager:
                 pass
         for key in [k for k in self._axis_state if k[0] == instance_id]:
             del self._axis_state[key]
+        for key in [k for k in self._hat_state if k[0] == instance_id]:
+            del self._hat_state[key]
 
     def device_names(self):
         return [stick.get_name() for stick in self.joysticks.values()]
@@ -351,37 +358,64 @@ class GamepadManager:
     # -- events --------------------------------------------------------------
 
     def handle(self, event):
-        """The actions `event` triggers, as a tuple (usually empty or one)."""
+        """The actions `event` presses, as a tuple (usually empty or one)."""
+        return self.resolve(event)[0]
+
+    def resolve(self, event):
+        """`(pressed, released)` actions for one event.
+
+        Both in one call, because a hat or an axis carries the press and the
+        release in the *same* event - a stick swung from left to right reports
+        one JOYHATMOTION that both releases `left` and presses `right`. The
+        crossing is edge-detected against stored state, so asking twice would
+        consume it once and lose the other half. `handle` is this method's
+        press half, kept because most callers want only that.
+
+        Releases exist for games with a held control. Nothing the cabinet
+        itself does uses them - a menu cares when a panel goes down, never when
+        it comes up - so they are delivered only to a running game.
+        """
         if event.type == pygame.JOYDEVICEADDED:
             self._open(event.device_index)
-            return ()
+            return (), ()
         if event.type == pygame.JOYDEVICEREMOVED:
             self._close(event.instance_id)
-            return ()
+            return (), ()
 
         if not self._accepts(getattr(event, 'instance_id', None)):
-            return ()
+            return (), ()
 
         if event.type == pygame.JOYBUTTONDOWN:
-            return self._lookup.get(('button', event.button), ())
+            return self._lookup.get(('button', event.button), ()), ()
+
+        if event.type == pygame.JOYBUTTONUP:
+            return (), self._lookup.get(('button', event.button), ())
 
         if event.type == pygame.JOYHATMOTION:
-            x, y = event.value
-            actions = ()
-            if x:
-                actions += self._lookup.get(
-                    ('hat', event.hat, 'x', _sign(x)), (),
+            pressed = released = ()
+            for axis, value in zip(('x', 'y'), event.value):
+                edge = self._edge(
+                    self._hat_state,
+                    (getattr(event, 'instance_id', None), event.hat, axis),
+                    _sign(value),
                 )
-            if y:
-                actions += self._lookup.get(
-                    ('hat', event.hat, 'y', _sign(y)), (),
-                )
-            return actions
+                if edge is None:
+                    continue
+                was, now = edge
+                if now:
+                    pressed += self._lookup.get(
+                        ('hat', event.hat, axis, now), (),
+                    )
+                if was:
+                    released += self._lookup.get(
+                        ('hat', event.hat, axis, was), (),
+                    )
+            return pressed, released
 
         if event.type == pygame.JOYAXISMOTION:
-            # Axes report continuously, so only the crossing into a direction
-            # counts - otherwise a panel held down would re-fire every frame.
-            state_key = (event.instance_id, event.axis)
+            # Axes report continuously, so only the crossing into or out of a
+            # direction counts - otherwise a panel held down would re-fire
+            # every frame.
             if event.value < -self.deadzone:
                 sign = -1
             elif event.value > self.deadzone:
@@ -389,14 +423,36 @@ class GamepadManager:
             else:
                 sign = 0
 
-            if sign == self._axis_state.get(state_key, 0):
-                return ()
-            self._axis_state[state_key] = sign
-            if sign == 0:
-                return ()
-            return self._lookup.get(('axis', event.axis, sign), ())
+            edge = self._edge(
+                self._axis_state, (event.instance_id, event.axis), sign,
+            )
+            if edge is None:
+                return (), ()
 
-        return ()
+            was, now = edge
+            pressed = (self._lookup.get(('axis', event.axis, now), ())
+                       if now else ())
+            released = (self._lookup.get(('axis', event.axis, was), ())
+                        if was else ())
+            return pressed, released
+
+        return (), ()
+
+    @staticmethod
+    def _edge(state, key, sign):
+        """`(was, now)` if `key` changed sign, else None. Records the new one."""
+        was = state.get(key, 0)
+        if sign == was:
+            return None
+        state[key] = sign
+        return was, sign
+
+    def key_releases(self, event):
+        """`key_actions` for a KEYUP, so a held key can be let go of.
+
+        The same table: a binding names a control, not an edge.
+        """
+        return self.key_actions(event)
 
     def panels(self, event):
         """Which physical panels `event` is, ignoring what they are bound to.
