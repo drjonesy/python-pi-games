@@ -729,6 +729,46 @@ Pac-Man sets `order=0`.
 loop rates. A game lays itself out inside that rather than changing it; Pac-Man
 asserts the two still agree.
 
+There is a working skeleton to copy — [`.claude/skills/new-game/reference/game_template.py`](../.claude/skills/new-game/reference/game_template.py),
+a complete title-screen-and-play loop with every method annotated. The
+[`new-game` skill](../.claude/skills/new-game/SKILL.md) beside it is the same
+material written for Claude Code; `/new-game` in a session opens it.
+
+#### Designing for the mat
+
+The eight actions are what a game is written against, but **the mat only has
+six of them**, and that is a constraint on the design rather than a detail of
+the wiring:
+
+| Action | Mat panel | What a game may assume |
+|---|---|---|
+| `up` `down` `left` `right` | the four arrows | The whole vocabulary |
+| `select` | START (and ○) | Start, confirm |
+| `pause` | SELECT | Pauses during play |
+| `delete` | ✕ | Name entry only — treat as absent in play |
+| `mute` | *unbound* | **Never fires** — see [the shape panels](#the-shape-panels-do-nothing-during-play) |
+
+So: **a run must be playable with four arrows and START alone.** Nothing may
+depend on `mute`, and nothing should depend on `delete`. Diagonals and chords
+are out — two panels under two feet do not arrive together, and the cabinet has
+no combo detection, for the reason given under
+[the operator menu](#setting-your-own-passcode). The mat's centre is an
+eleventh sensor and is deliberately unbound; it is where a player stands
+between moves, so it fires constantly.
+
+Presses are a *step*, not a tap. Expect a coarser input rate than a keyboard,
+expect a foot to clip a neighbouring panel, and give a mistimed step a way to
+recover — Pac-Man's turn buffering is exactly that, and is a large part of how
+it feels. Releases are delivered only to a running game and can be lost
+entirely, so `handle_release` means "not held any more", never an event to
+count.
+
+Don't spell out control names either. `context.scheme` names the active
+labelling (`ENTER` or `START`, `ESC` or `SELECT`, and `None` for sound under the
+pad); [`cabinet/ui/hints.py`](cabinet/ui/hints.py) draws the bracketed
+reminders, including the struck-through speaker. The operator menu can switch
+scheme while a game is loaded, so read it each frame rather than at construction.
+
 ### The one thing not to change: the 120Hz simulation rate
 
 The simulation runs at a fixed **120 steps/second**, rendering at **60**. They
