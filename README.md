@@ -1,5 +1,11 @@
-# Pacman Remake
+# Games Remade in Python
 
-This is a remake of pacman. There are two versions: nodejs (pnpm) and python (pygame).
+A Python-based game engine designed for running interactive games on a Raspberry Pi using USB HID (Human Interface Device) controllers.
 
-The python version is built for use on a raspberry pi with both keyboard and external controllers... like DDR Pad 😏
+### Key Highlights
+
+- **Target Hardware:** Runs directly on a Raspberry Pi using USB HID inputs.
+- **Primary Input:** Optimized for live play with Dance Dance Revolution (DDR) dance pads.
+- **Initial Release:** Features **Pacman** as the inaugural playable game.
+
+![DDR Pad connect raspberry pi connected to TV playing Pacman](./raspberry-pi-ddr-pacman.jpeg)
