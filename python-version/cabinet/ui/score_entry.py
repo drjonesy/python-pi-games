@@ -8,6 +8,7 @@ built it as a key grid rather than a text input (ScoreEntry.jsx:8-11).
 
 from .. import constants as C
 from ..controls import KEYBOARD, SCHEMES
+from ..name_filter import is_allowed
 
 LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -64,6 +65,8 @@ class ScoreEntry:
         self.open = False
         self.pending_score = None
         self.name = ''
+        # The last CONFIRM was refused; cleared by the next key.
+        self.rejected = False
         self.row = 0
         self.col = 0
         self.on_close = None
@@ -72,6 +75,7 @@ class ScoreEntry:
         """Opens the modal if `score` earns a place (ScoreEntry.jsx:53)."""
         if score > 0 and self.leaderboard.qualifies(score):
             self.name = ''
+            self.rejected = False
             self.row = 0
             self.col = 0
             self.pending_score = score
@@ -126,13 +130,21 @@ class ScoreEntry:
         elif key['type'] == 'del':
             self.name = self.name[:-1]
         elif key['type'] == 'confirm':
-            self.close_and_save()
+            if is_allowed(self.name):
+                self.close_and_save()
+                return
+            # Wipe it so the player starts again rather than editing around it.
+            self.name = ''
+            self.rejected = True
+            return
+        self.rejected = False
 
     def select(self):
         self.activate_key(KEY_ROWS[self.row][self.col])
 
     def backspace(self):
         self.name = self.name[:-1]
+        self.rejected = False
 
     # -- drawing -------------------------------------------------------------
 
@@ -150,8 +162,12 @@ class ScoreEntry:
                        C.ARCADE_YELLOW, align='center')
         self.font.draw(surface, str(self.pending_score), C.LOGICAL_WIDTH / 2,
                        SCORE_Y, C.ARCADE_RED, scale=2, align='center')
-        self.font.draw(surface, 'ENTER YOUR NAME', C.LOGICAL_WIDTH / 2, LABEL_Y,
-                       C.WHITE, align='center')
+        if self.rejected:
+            self.font.draw(surface, 'NAME NOT ALLOWED', C.LOGICAL_WIDTH / 2,
+                           LABEL_Y, C.ARCADE_RED, align='center')
+        else:
+            self.font.draw(surface, 'ENTER YOUR NAME', C.LOGICAL_WIDTH / 2,
+                           LABEL_Y, C.WHITE, align='center')
 
         self.draw_slots(surface, blink_ms)
         self.draw_keyboard(surface)

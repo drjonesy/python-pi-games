@@ -1,11 +1,12 @@
 # Arcade cabinet — pygame
 
 A native Python + pygame arcade **platform** built to run on a Raspberry Pi 4B+
-without Chromium. It boots into a game picker. One title is installed:
+without Chromium. It boots into a game picker. Two titles are installed:
 
 | Game | What it is |
 |---|---|
 | **PAC-MAN** | A port of the React/Vite version in [`../node-version/`](../node-version/) |
+| **DINO RUN** | A runner played with two panels: ▲ jumps rocks and low flyers, ▼ ducks high ones. Speeds up 10% every 10s |
 
 Every game gets the same things from the machine: the screen, the 5×7 font, the
 mixer, the dance mat, the on-screen control labelling, **its own high-score
@@ -568,6 +569,14 @@ pixel size, transcodes 14 MP3s to Ogg Vorbis, and writes
 `games/pacman/assets/manifest.json` (frame counts and dimensions). Total:
 ~760 KB. It converts *this* game's art; another game brings its own however it
 likes, so long as it ends as a manifest and files beside it.
+
+DINO RUN's art is keyed off its white backgrounds, cropped and scaled from
+[`../_games/dino-run/`](../_games/dino-run/) by its own tool, which also writes
+its `preview.png`. It needs only pygame:
+
+```bash
+.venv/bin/python tools/convert_dino_assets.py
+```
 
 Ogg Vorbis rather than MP3 because SDL_mixer decodes Vorbis with a bundled
 stb_vorbis on every build, so it cannot break on the Pi the way MP3 can — and

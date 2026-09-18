@@ -1,8 +1,16 @@
 {
   "scores": [
     {
+      "name": "JT",
+      "score": 92650
+    },
+    {
       "name": "DAD",
       "score": 37280
+    },
+    {
+      "name": "AAA",
+      "score": 6070
     }
   ]
 }

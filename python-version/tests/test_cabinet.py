@@ -501,6 +501,23 @@ def test_a_key_with_no_action_releases_nothing(shell):
     assert shell.game.released == []
 
 
+def test_a_score_that_does_not_place_still_calls_on_close(shell):
+    """The contract says `on_close` fires either way. A game that waits for it
+    to leave its GAME OVER screen would otherwise wait forever."""
+    closed = []
+    shell._submit_score(0, on_close=lambda: closed.append(True))
+    assert closed == [True]
+    assert not shell.score_entry.open
+
+
+def test_a_score_that_places_calls_on_close_only_once_saved(shell):
+    closed = []
+    shell._submit_score(500, on_close=lambda: closed.append(True))
+    assert shell.score_entry.open and closed == []
+    shell.score_entry.close_and_save()
+    assert closed == [True]
+
+
 def test_pressing_still_goes_through_the_routing_table(shell):
     """Releases bypass it; presses must not start doing the same."""
     shell.score_entry.open = True

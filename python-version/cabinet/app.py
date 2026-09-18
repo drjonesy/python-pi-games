@@ -211,9 +211,14 @@ class Cabinet:
         be pointed at another one's file.
         """
         self.score_entry.leaderboard = self.leaderboard_for(self.spec)
-        self.score_entry.try_open(
+        opened = self.score_entry.try_open(
             score, on_close=lambda: self._scores_changed(on_close),
         )
+        # `GameContext` promises `on_close` either way. A score that does not
+        # place opens no modal, so nothing else would ever call it - and a game
+        # waiting on it to leave GAME OVER would wait forever.
+        if not opened and on_close:
+            on_close()
 
     def _scores_changed(self, on_close=None):
         self.picker.refresh()

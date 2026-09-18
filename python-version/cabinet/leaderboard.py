@@ -26,6 +26,7 @@ import math
 import os
 
 from .constants import DEFAULT_NAME, MAX_ENTRIES, MAX_NAME_LENGTH
+from .name_filter import is_allowed
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data',
@@ -184,7 +185,9 @@ class Leaderboard:
         holder. Ties keep the existing holder ahead of the newcomer.
         """
         clean_name = str(name if name is not None else '').strip()[:MAX_NAME_LENGTH]
-        if not clean_name:
+        # The name-entry screen refuses these already; this is the backstop for
+        # anything else that submits a score.
+        if not clean_name or not is_allowed(clean_name):
             clean_name = DEFAULT_NAME
 
         clean_score = _to_number(score)

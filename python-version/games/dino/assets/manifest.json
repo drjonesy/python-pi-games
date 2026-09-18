@@ -1,0 +1,315 @@
+{
+  "audio": {},
+  "sprites": {
+    "bird_0": {
+      "file": "sprites/bird_0.png",
+      "frame_width": 46,
+      "frames": 1,
+      "height": 26,
+      "width": 46
+    },
+    "bird_1": {
+      "file": "sprites/bird_1.png",
+      "frame_width": 46,
+      "frames": 1,
+      "height": 26,
+      "width": 46
+    },
+    "bird_2": {
+      "file": "sprites/bird_2.png",
+      "frame_width": 46,
+      "frames": 1,
+      "height": 26,
+      "width": 46
+    },
+    "bird_3": {
+      "file": "sprites/bird_3.png",
+      "frame_width": 46,
+      "frames": 1,
+      "height": 26,
+      "width": 46
+    },
+    "bird_4": {
+      "file": "sprites/bird_4.png",
+      "frame_width": 46,
+      "frames": 1,
+      "height": 26,
+      "width": 46
+    },
+    "bird_5": {
+      "file": "sprites/bird_5.png",
+      "frame_width": 46,
+      "frames": 1,
+      "height": 26,
+      "width": 46
+    },
+    "bird_6": {
+      "file": "sprites/bird_6.png",
+      "frame_width": 46,
+      "frames": 1,
+      "height": 26,
+      "width": 46
+    },
+    "bird_7": {
+      "file": "sprites/bird_7.png",
+      "frame_width": 46,
+      "frames": 1,
+      "height": 26,
+      "width": 46
+    },
+    "dead_0": {
+      "feet": 46,
+      "file": "sprites/dead_0.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "dead_1": {
+      "feet": 46,
+      "file": "sprites/dead_1.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "dead_2": {
+      "feet": 46,
+      "file": "sprites/dead_2.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "dead_3": {
+      "feet": 46,
+      "file": "sprites/dead_3.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "dead_4": {
+      "feet": 46,
+      "file": "sprites/dead_4.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "dead_5": {
+      "feet": 46,
+      "file": "sprites/dead_5.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "dead_6": {
+      "feet": 46,
+      "file": "sprites/dead_6.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "dead_7": {
+      "feet": 46,
+      "file": "sprites/dead_7.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "duck": {
+      "feet": 34,
+      "file": "sprites/duck.png",
+      "frame_width": 60,
+      "frames": 1,
+      "height": 34,
+      "width": 60
+    },
+    "grass": {
+      "file": "sprites/grass.png",
+      "frame_width": 544,
+      "frames": 1,
+      "height": 52,
+      "width": 544
+    },
+    "idle_0": {
+      "feet": 46,
+      "file": "sprites/idle_0.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_0": {
+      "feet": 46,
+      "file": "sprites/jump_0.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_1": {
+      "feet": 46,
+      "file": "sprites/jump_1.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_10": {
+      "feet": 46,
+      "file": "sprites/jump_10.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_11": {
+      "feet": 46,
+      "file": "sprites/jump_11.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_2": {
+      "feet": 46,
+      "file": "sprites/jump_2.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_3": {
+      "feet": 46,
+      "file": "sprites/jump_3.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_4": {
+      "feet": 46,
+      "file": "sprites/jump_4.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_5": {
+      "feet": 46,
+      "file": "sprites/jump_5.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_6": {
+      "feet": 46,
+      "file": "sprites/jump_6.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_7": {
+      "feet": 46,
+      "file": "sprites/jump_7.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_8": {
+      "feet": 46,
+      "file": "sprites/jump_8.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "jump_9": {
+      "feet": 46,
+      "file": "sprites/jump_9.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "rock": {
+      "file": "sprites/rock.png",
+      "frame_width": 40,
+      "frames": 1,
+      "height": 24,
+      "width": 40
+    },
+    "run_0": {
+      "feet": 46,
+      "file": "sprites/run_0.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "run_1": {
+      "feet": 46,
+      "file": "sprites/run_1.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "run_2": {
+      "feet": 46,
+      "file": "sprites/run_2.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "run_3": {
+      "feet": 46,
+      "file": "sprites/run_3.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "run_4": {
+      "feet": 46,
+      "file": "sprites/run_4.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "run_5": {
+      "feet": 46,
+      "file": "sprites/run_5.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "run_6": {
+      "feet": 46,
+      "file": "sprites/run_6.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    },
+    "run_7": {
+      "feet": 46,
+      "file": "sprites/run_7.png",
+      "frame_width": 67,
+      "frames": 1,
+      "height": 47,
+      "width": 67
+    }
+  }
+}
